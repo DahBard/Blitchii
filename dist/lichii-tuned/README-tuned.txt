@@ -448,6 +448,21 @@ below), plus:
      verify.bat's other checks turn off. Still 13 launchers.
    - NVIDIA DLSS's quality setting now also sets Ocarina's render resolution (#1589): NVIDIA
      builds only, nothing changes here.
+ * r63: r62 with two fixes.
+   - Frame generation on or off is one setting for every game: the FG button in the status bar
+     and Configure > Graphics decide it, and the button saves its choice at once. Ocarina's own
+     game settings had frame generation switched on (since round 22's frame generation tests),
+     which turned it back on at every launch whatever the button said; that per-game switch is no
+     longer read, and the game's properties no longer show it. The frame generation type and its
+     other settings can still be set per game.
+   - Each new build precaches and prepares once, on its first launch, as before only after the
+     shaders were deleted: what the precache and the preparation record as done now names the
+     build too, because a new build starts with a cold driver cache. So the first launch of each
+     build is the long one (the loading screen builds the saved pipelines and compute programs,
+     then the preparation runs, about 15 minutes; Skip resumes it at the next launch), and later
+     launches of the same build skip it. The preparation remembers the last four builds, so
+     going back to one of them (or to r62) doesn't prepare again; the pgo-train download doesn't
+     prepare unless EDEN_NX2_PRECOMPILE=1 is set, so its profile records play.
  * Recommended speed settings, applied once on first start (change them freely afterwards):
    GPU accuracy Low, asynchronous shaders on, reactive flushing off, asynchronous presentation
    on, GPU video decoding, shader precache Always, Switch 2 draws with unbuilt pipelines

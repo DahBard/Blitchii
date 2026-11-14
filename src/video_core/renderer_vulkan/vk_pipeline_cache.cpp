@@ -589,6 +589,12 @@ size_t GetTotalPipelineWorkers() {
 #endif
 }
 
+/// The driver version the shader precache's stamps record, with this build mixed in: a new build
+/// precaches its cached pipelines and compute programs again, once (Nx2Precompile::BuildStamp).
+u32 PrecacheDriverStamp(const Device& device) {
+    return device.GetDriverVersion() ^ VideoCommon::Nx2Precompile::BuildStampHash();
+}
+
 } // Anonymous namespace
 
 size_t ComputePipelineCacheKey::Hash() const noexcept {
@@ -1425,7 +1431,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     if (precache) {
         precached_pipelines = ShaderWarm::ReadPrecachedPipelines(
             ShaderWarm::PrecachedPipelinesPath(title_id),
-            {device.GetDriverVersion(), device.GetDeviceID(), CACHE_VERSION});
+            {PrecacheDriverStamp(device), device.GetDeviceID(), CACHE_VERSION});
     }
     if (use_vulkan_pipeline_cache) {
         vulkan_pipeline_cache_filename =
@@ -2148,7 +2154,7 @@ private:
     std::vector<size_t> free;
 };
 
-/// A prepared stamp ("size modified driver version model") without its second field, the
+/// A prepared stamp ("size modified driver version build model") without its second field, the
 /// precompiled file's time; empty when it has no such field.
 std::string StampWithoutTime(const std::string& stamp) {
     const size_t first = stamp.find(' ');
@@ -2157,6 +2163,43 @@ std::string StampWithoutTime(const std::string& stamp) {
         return {};
     }
     return stamp.substr(0, first) + stamp.substr(second);
+}
+
+/// The prepared stamp file's lines, one per build that prepared the file.
+std::vector<std::string> ReadStampLines(const std::filesystem::path& path) {
+    std::vector<std::string> lines;
+    std::ifstream in(path, std::ios::binary);
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty()) {
+            lines.push_back(std::move(line));
+        }
+    }
+    return lines;
+}
+
+/// Writes this build's stamp and keeps up to three other builds' lines, so switching between
+/// builds doesn't prepare again. A line from before builds were stamped (r62 and older compare
+/// only the first line), for the same file, driver and GPU, stays first.
+void WriteStampLines(const std::filesystem::path& path, const std::string& stamp) {
+    const std::string token = fmt::format(" {} ", VideoCommon::Nx2Precompile::BuildStamp());
+    std::string unbuilt = stamp;
+    if (const size_t at = unbuilt.find(token); at != std::string::npos) {
+        unbuilt.replace(at, token.size(), " ");
+    }
+    const std::string unbuilt_rest = StampWithoutTime(unbuilt);
+    std::string first;
+    std::string others;
+    size_t kept = 0;
+    for (const std::string& line : ReadStampLines(path)) {
+        if (!unbuilt_rest.empty() && StampWithoutTime(line + '\n') == unbuilt_rest) {
+            first = line + '\n';
+        } else if (line.find(token) == std::string::npos && kept < 3) {
+            others += line + '\n';
+            ++kept;
+        }
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << first << stamp << others;
 }
 } // Anonymous namespace
 
@@ -2168,7 +2211,7 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::vector<PrecacheJob> jobs,
     const std::filesystem::path warm_file = ShaderWarm::ComputeWarmPath(title_id);
     const std::string path = Common::FS::PathToUTF8String(warm_file);
     const auto stamp = [&](u64 entries) {
-        return ShaderWarm::CurrentWarmStamp(warm_file, entries, device.GetDriverVersion(),
+        return ShaderWarm::CurrentWarmStamp(warm_file, entries, PrecacheDriverStamp(device),
                                             device.GetDeviceID(), CACHE_VERSION);
     };
     // Compute programs of the precache file, unless a matching marker says they were built.
@@ -2180,7 +2223,8 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::vector<PrecacheJob> jobs,
     if (!std::filesystem::exists(warm_file, ec)) {
         LOG_INFO(Render_Vulkan, "Shader precache: no precache file at {}", path);
     } else if (current && marker && marker->Matches(*current)) {
-        LOG_INFO(Render_Vulkan, "Shader precache: compute programs already done for this driver");
+        LOG_INFO(Render_Vulkan,
+                 "Shader precache: compute programs already done for this driver and build");
     } else {
         // Read the whole file here (its own reader: the disk cache loader deletes files it rejects).
         try {
@@ -2449,8 +2493,7 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::vector<PrecacheJob> jobs,
                  unbuildable.empty() ? "" : " (", unbuildable, unbuildable.empty() ? "" : ")",
                  total - precompiled_built - unbuildable_total,
                  resumed != 0 ? fmt::format("; {} more in earlier runs", resumed) : "");
-        std::ofstream stamp_file(precompiled->first, std::ios::binary | std::ios::trunc);
-        stamp_file << precompiled->second;
+        WriteStampLines(precompiled->first, precompiled->second);
         if (precompiled_counts) {
             std::error_code remove_error;
             std::filesystem::remove(precompiled_counts->progress_path, remove_error);
@@ -2465,7 +2508,7 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::vector<PrecacheJob> jobs,
     if (precached.size() != precached_before) {
         ShaderWarm::WritePrecachedPipelines(
             ShaderWarm::PrecachedPipelinesPath(title_id),
-            {device.GetDriverVersion(), device.GetDeviceID(), CACHE_VERSION}, precached);
+            {PrecacheDriverStamp(device), device.GetDeviceID(), CACHE_VERSION}, precached);
     }
     if (!stop_loading.stop_requested() && total_built != 0) {
         // Without this, the builds reach the file only at the next boot, game change or clean
@@ -2572,25 +2615,24 @@ std::optional<std::pair<std::filesystem::path, std::string>> PipelineCache::AddP
         return std::nullopt;
     }
     const auto modified = std::filesystem::last_write_time(path, error).time_since_epoch().count();
-    // Prepared once per file, driver, GPU and release: the driver's cache keeps the pipelines.
+    // Prepared once per file, driver, GPU and build: a new build's driver cache starts cold.
     const auto stamp_path = Precompile::PreparedStampPath(base_dir, CACHE_VERSION);
-    const std::string stamp =
-        fmt::format("{} {} {:#x} {} {}\n", file_size, modified, device.GetDriverVersion(),
-                    Precompile::PreparationVersion, device.GetModelName());
+    const std::string stamp = fmt::format(
+        "{} {} {:#x} {} {} {}\n", file_size, modified, device.GetDriverVersion(),
+        Precompile::PreparationVersion, Precompile::BuildStamp(), device.GetModelName());
     // A copied profile (an import, a restored backup) can give the file another time. A stamp
     // that differs from this one only there still holds when the file's note names the recipe.
     const auto only_time_differs = [&stamp, noted](const std::string& line) {
         const std::string rest = StampWithoutTime(line + '\n');
         return noted && !rest.empty() && rest == StampWithoutTime(stamp);
     };
-    std::string prepared_line;
-    if (!Precompile::Forced()) {
-        std::ifstream stamp_file(stamp_path, std::ios::binary);
-        if (std::getline(stamp_file, prepared_line) && prepared_line + '\n' == stamp) {
-            LOG_INFO(Render_Vulkan,
-                     "Precompiled pipelines: {} was prepared for this driver already", path_text);
-            return std::nullopt;
-        }
+    const std::vector<std::string> prepared_lines =
+        Precompile::Forced() ? std::vector<std::string>{} : ReadStampLines(stamp_path);
+    if (std::ranges::any_of(prepared_lines,
+                            [&stamp](const std::string& line) { return line + '\n' == stamp; })) {
+        LOG_INFO(Render_Vulkan, "Precompiled pipelines: {} was prepared for this driver already",
+                 path_text);
+        return std::nullopt;
     }
     // An unfinished preparation of the same file, driver and version resumes where it stopped.
     const auto progress_path = Precompile::PreparedProgressPath(base_dir, CACHE_VERSION);
@@ -2601,9 +2643,9 @@ std::optional<std::pair<std::filesystem::path, std::string>> PipelineCache::AddP
         const bool counted =
             std::getline(progress_file, progress_key) && std::getline(progress_file, progress_done);
         // A copy of a prepared file, unless a preparation of the file as it is now was under way.
-        if (progress_key + '\n' != stamp && only_time_differs(prepared_line)) {
-            std::ofstream rewritten(stamp_path, std::ios::binary | std::ios::trunc);
-            rewritten << stamp;
+        if (progress_key + '\n' != stamp &&
+            std::ranges::any_of(prepared_lines, only_time_differs)) {
+            WriteStampLines(stamp_path, stamp);
             LOG_INFO(Render_Vulkan,
                      "Precompiled pipelines: {} was prepared for this driver already; only its "
                      "time changed (a copied profile), so its stamp is updated",

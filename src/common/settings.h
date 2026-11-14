@@ -497,8 +497,11 @@ struct Values {
                                                 true,
                                                 true};
 
-    SwitchableSetting<bool> frame_gen{linkage, false, "frame_gen", Category::Renderer,
-                                      Specialization::Default, true, false};
+    /// Global only (lichii-tuned): the status bar's FG button and Configure > Graphics turn it on
+    /// and off for every game. A per-game value overrode both at each boot, and the button only
+    /// changed the running session's copy of it.
+    Setting<bool> frame_gen{linkage, false, "frame_gen", Category::Renderer,
+                            Specialization::Default, true, false};
 
     SwitchableSetting<FrameGenType> frame_gen_type{linkage,
                                                    FrameGenType::Fsr3,

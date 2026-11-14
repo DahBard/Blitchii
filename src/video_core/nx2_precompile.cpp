@@ -20,6 +20,7 @@
 #include "common/cityhash.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
+#include "common/scm_rev.h"
 #include "core/file_sys/nx2_shader_extract.h"
 
 namespace VideoCommon::Nx2Precompile {
@@ -111,11 +112,18 @@ int Mode() {
     static const int mode = [] {
         const char* value = std::getenv("EDEN_NX2_PRECOMPILE");
         if (value == nullptr || *value == '\0') {
+#ifdef __LLVM_INSTR_PROFILE_GENERATE
+            // pgo-train: a new build prepares once, and its ~120k translations would fill the
+            // recorded profile (pgo_training.cpp never resets the counts).
+            // EDEN_NX2_PRECOMPILE=1 still prepares.
+            return 0;
+#else
             // On by default since 2026-11-09 (owner, with the Fritchii "Preparing shaders" screen):
             // OoT first visit with an empty cache, prepared vs cold driver cache: worst walking
             // freezes ~700-850 ms -> 40-70 ms, 35 -> 43 fps. Only runs when a recipe exists.
             // EDEN_NX2_PRECOMPILE=0 turns it off.
             return 1;
+#endif
         }
         return std::clamp(std::atoi(value), 0, 2);
     }();
@@ -165,16 +173,43 @@ std::filesystem::path PreparedProgressPath(const std::filesystem::path& title_di
     return title_dir / fmt::format("precompiled_progress.tuned-v{}.txt", cache_version);
 }
 
+const std::string& BuildStamp() {
+    static const std::string stamp = [] {
+        std::string text{Common::g_build_version};
+        if (text.empty()) {
+            text = Common::g_scm_rev;
+        }
+        if (text.empty()) {
+            text = "unversioned";
+        }
+        std::ranges::replace(text, ' ', '_');
+        return text;
+    }();
+    return stamp;
+}
+
+u32 BuildStampHash() {
+    static const u32 hash =
+        static_cast<u32>(Common::CityHash64(BuildStamp().data(), BuildStamp().size()));
+    return hash;
+}
+
 bool PreparationPending(u64 title_id, u32 cache_version) {
     if (Mode() == 0 || title_id == 0) {
         return false;
     }
     const auto title_dir = Common::FS::GetEdenPath(Common::FS::EdenPath::ShaderDir) /
                            fmt::format("{:016x}", title_id);
-    std::error_code error;
-    if (std::filesystem::exists(PreparedStampPath(title_dir, cache_version), error)) {
-        return false;
+    // The renderer compares whole lines; the driver is known only there. Without a line of this
+    // build, the preparation is pending again.
+    std::ifstream stamp_file(PreparedStampPath(title_dir, cache_version), std::ios::binary);
+    const std::string token = fmt::format(" {} ", BuildStamp());
+    for (std::string line; std::getline(stamp_file, line);) {
+        if (line.find(token) != std::string::npos) {
+            return false;
+        }
     }
+    std::error_code error;
     return std::filesystem::exists(PrecompiledPath(title_dir, cache_version), error) ||
            FindRecipe(title_id, title_dir, cache_version).has_value();
 }

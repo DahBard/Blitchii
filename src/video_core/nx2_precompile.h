@@ -18,6 +18,7 @@
 #include <functional>
 #include <optional>
 #include <stop_token>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -52,8 +53,10 @@ void SetGameFiles(u64 title_id, GameFiles files);
 [[nodiscard]] std::filesystem::path PrecompiledPath(const std::filesystem::path& title_dir,
                                                     u32 cache_version);
 
-/// <title_dir>/precompiled_prepared.tuned-v<cache_version>.txt: the file, driver, GPU and
-/// preparation version a preparation built every record for (PipelineCache::AddPrecompiledJobs).
+/// <title_dir>/precompiled_prepared.tuned-v<cache_version>.txt: the file, driver, GPU, preparation
+/// version and build a preparation built every record for (PipelineCache::AddPrecompiledJobs),
+/// one line per build that prepared it: this build's, up to three others', and a line from
+/// before builds were stamped first.
 /// Not Fritchii's name: its runs would make each other's preparations run again.
 [[nodiscard]] std::filesystem::path PreparedStampPath(const std::filesystem::path& title_dir,
                                                       u32 cache_version);
@@ -64,13 +67,17 @@ void SetGameFiles(u64 title_id, GameFiles files);
 [[nodiscard]] std::filesystem::path PreparedProgressPath(const std::filesystem::path& title_dir,
                                                          u32 cache_version);
 
-/// In the prepared stamp in place of the build version, so a new build keeps a finished
-/// preparation (Fritchii stamps its release for the same reason). Raise it when a translator or
-/// pipeline key change means the driver's cache no longer holds what the game draws.
+/// In the prepared stamp next to the build. Raise it to prepare again within one build.
 inline constexpr std::string_view PreparationVersion = "tuned 1";
 
-/// A recipe or precompiled file for this title that no preparation finished yet: the desktop app
-/// asks before the game starts, as for a title never precached.
+/// This build (its version string, without spaces), recorded by the prepared stamp and, through
+/// BuildStampHash, by the shader precache's stamps: a new build's driver cache starts cold (seen
+/// on AMD), so each build precaches and prepares once, as after deleting the shaders.
+[[nodiscard]] const std::string& BuildStamp();
+[[nodiscard]] u32 BuildStampHash();
+
+/// A recipe or precompiled file for this title that no preparation finished yet with this build:
+/// the desktop app asks before the game starts, as for a title never precached.
 [[nodiscard]] bool PreparationPending(u64 title_id, u32 cache_version);
 
 struct Recipe {

@@ -1104,6 +1104,7 @@ void MainWindow::InitializeWidgets() {
     frame_gen_status_button->setCheckable(true);
     connect(frame_gen_status_button, &QPushButton::clicked, this, [this] {
         Settings::values.frame_gen.SetValue(!Settings::values.frame_gen.GetValue());
+        OnSaveConfig();
         UpdateFrameGenButton();
     });
     UpdateFrameGenButton();
@@ -1122,6 +1123,7 @@ void MainWindow::InitializeWidgets() {
                     context_menu.addAction(label, [this, type] {
                         Settings::values.frame_gen_type.SetValue(type);
                         Settings::values.frame_gen.SetValue(true);
+                        OnSaveConfig();
                         UpdateFrameGenButton();
                     });
                 }
