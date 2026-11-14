@@ -2659,6 +2659,26 @@ Own changes:
        A/B (ab-25 on r54 already showed none), LP-E affinity (LP-E busy 0-1%), collector and ASTC
        submit changes, #1602, #1218, #1242, the borderless flip fix (the owner plays in
        exclusive fullscreen), MMCSS, the 10 s spike hunt (<1% of the excess), hot pages.
+   - GPU fast and slow sittings (owner, 2026-11-14: "investigate this through the logs and help me
+     troubleshoot"; two investigators over 83 deduplicated Ocarina logs, r10-r62; files and
+     scripts in the session scratchpad, gpu-state/): the probe s6:45384f519a8eacd3 sits at tight
+     levels: flat ~205-215 us (60 runs, most of r10-r54 and bp1), ~250 (5: r23 perm, r27, r62 np),
+     ~340-375 (r15, r55 base and sitting 3, r62) and ~420-460 (r16, r43-r45). Slow/fast at
+     matched content: L2-latency-bound work 1.5-2.0x, ALU-bound dispatches 1.3-1.7x, small draws
+     1.35-1.75x, the bandwidth-bound untimed rest only 1.17-1.26x, the title-screen blit 1.07x:
+     the shader (core) clock is lower, not the memory clock. Fast runs are flat whatever the load;
+     slow ones follow it: the driver's clock policy (DPM) holds the peak clock in fast sittings
+     and runs on demand in slow ones. Nothing Lichii logs separates them (505 boot line templates,
+     every setting, the driver, VRAM, ReBAR off in both, power mode and plan; no swapchain extent,
+     layers, overlays, other GPU clients or clocks are logged). Candidates outside Lichii: another
+     GPU client (a browser with hardware acceleration, video, Discord, overlays, recorders), a
+     sensor tool polling the card, Adrenalin's global graphics or Tuning state, the display mode.
+     Decisive owner test: pin the clock for one run (Radeon Developer Panel's Peak clock mode, or
+     Adrenalin's Min Frequency near Max if offered) and unpin it for the next; flat ~205-215 us
+     when pinned confirms it. For r64, a GPU sensor line every 10 s through AMD's ADLX (loaded at
+     runtime from the driver's amdadlx64.dll: GFX and VRAM clock, board power, hot spot,
+     utilization; its own thread, off unless its switch is set) would show the state in every
+     log; the probe moves to s6:75d4369f3b1f5868 once native float atomics change 45384f51.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
