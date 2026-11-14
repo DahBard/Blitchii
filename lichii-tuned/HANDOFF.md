@@ -2740,6 +2740,19 @@ Own changes:
        run #4: 1405 test cases, 1404 passed and 1 skipped (the clock trace's own), the new
        HostMemory call-trace and float atomic tests included; the "Run the clock trace" step
        failed as in runs #2 and #3 (the runner's PDH setup takes ~7 s).
+   - "Force maximum clocks" on r64 (owner, 2026-11-14; Configure > Graphics > Advanced, our
+     TurboMode; Radeon Developer Panel offers only Normal and Stable 1820 MHz on this card and
+     wouldn't let Lichii boot a game while connected): last 100 s at the fountain, against r63's
+     two runs and r62 (same parser, scratchpad maxclk/fountain.py):
+     forced 57.1 fps, GPU busy 12.99 ms, probe 210 us (p90 219), back work 13.88 ms a frame;
+     r63 run 1 (fast by chance) 55.9 fps, 13.12 ms, 209 us, 14.14; r63 run 2 54.2, 14.74, 259,
+     14.13; r62 54.7, 14.58, 264, 14.19. GPU-Z: a flat 3196 MHz (was 2.0-2.85 GHz wandering),
+     load 100% (the background work), board power 153 W (was ~90 W), hot spot 64 C. The clock
+     probe read 3127 MHz at the fountain, ~2% under GPU-Z. No exit crash (the r64 fix holds).
+     So the slow and between states are the driver's on-demand clock under Ocarina's bursty
+     load, and TurboMode removes them for ~60 W; it also takes the GPU state out of A/B noise.
+     Kept on for play and for tests from now on; for r65, make it the tuned build's recommended
+     setting so Apply Recommended Settings keeps it.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host

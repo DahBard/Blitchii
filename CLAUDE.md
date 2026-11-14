@@ -129,7 +129,8 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
 - 2026-11-14, r64: the exit crash fix, the GPU and smoothness items behind switches (off by
   default), the GPU clock probe and the new traces (HANDOFF). The owner's r63 sitting showed the
   GPU's fast/slow state is the driver's on-demand clock, not GPU-Z, the tune, the Claude app or
-  Adrenalin's game profile; next is a Radeon Developer Panel Peak clock run.
+  Adrenalin's game profile. "Force maximum clocks" (our TurboMode) holds 3.2 GHz: 57.1 fps at the
+  fountain against 54.2-54.7 in the slower state, for ~60 W; on for play and tests from now on.
 - A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
   asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
   usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;
