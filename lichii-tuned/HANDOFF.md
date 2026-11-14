@@ -2329,6 +2329,12 @@ Own changes:
      its Actions ran them (lichii-tuned #61 and #62, tests #12: all passed; artifacts named
      r121/r122 by the offset). All of it is on Blitchii now. Push to
      https://github.com/DahBard/blitchii by URL and check `git remote -v` first.
+     It happened again on 2026-11-14 at 07:05 UTC: origin had reset at a session restart, and a
+     `git push origin tuned` (meant only to update the tracking ref) sent `tuned` up to
+     `e7d728d1d` (r62's patch, bundle and notes) to the old fork. Its head commit says
+     [skip ci], so no run started there; the old fork's `tuned` was at `504e1bc08` before. Local
+     `tuned` now tracks `blitchii/tuned`: push with `git push blitchii tuned`, never through
+     origin.
    - Merge 3, done 2026-11-13 (r60; plan lichii-tuned/merge-plan-nx2c.md, notes in
      scratchpad/merge3/): step 1 merged nx2 `65745c243f` (60 commits; 83 conflicted files, 199
      hunks) in `9161e35d2`, resolved by seven area agents and reviewed by six (no defects found;
