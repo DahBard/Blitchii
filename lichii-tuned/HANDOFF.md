@@ -2570,6 +2570,46 @@ Own changes:
        FSR 4 on async compute. Dropped: a lower internal resolution or output, FSR 3.1 as the fix,
        fp16 (r11's wrong colour on this driver), longer fence-flush windows, image flag changes,
        dynamic state changes (pipeline keys).
+     - The skeptics (the first 18 died at the usage cut-off; 9 re-run, verdicts in
+       gpu-brainstorm/verify/):
+       - Co-limit recomputed: ~0.1 ms of frame per GPU ms at the fountain (0.05-0.2). With frame
+         generation on, AMD's generation adds at most 1.0-1.8 ms a real frame on the game queue
+         (the gap between our GPU spans in r55's FG-on route runs), and the GPU still has ~2-2.7
+         ms of slack: the fountain stays back-bound either way. GPU savings pay where the back is
+         lighter (light and medium areas at the 120 fps lock) and after Fritchii's multithreading.
+       - GPU state: two speeds between sittings. In slow ones every program runs 1.2-1.7x slower
+         with settings, driver, power mode and CPU clocks unchanged; the fast state looks clock
+         pinned. Readout in every timing log: s6:45384f519a8eacd3 (one workgroup) in 'DKB
+         gpu_work slowest', ~200-240 us fast, ~320-390 us slow (r62 fountain np 268). Worth
+         0.3-1.5 ms at the fountain if the fast state can be made the norm. Cause unknown: next a
+         GPU sensor log (1 s) and a per-sitting checklist (refresh, HDR, other displays, the
+         Adrenalin profile, HAGS, other GPU users); Radeon Developer Panel's peak clock mode
+         instead of TurboMode, whose work lands inside our timestamps.
+       - Kept for r64, behind switches: native float atomic adds (0.20-0.26 ms; both emit sites,
+         F32 storage views marked in collect_shader_info_pass, OpAtomicFMin -> OpAtomicFAddEXT in
+         RewriteOpcodes, VK_EXT_shader_atomic_float enabled, a boot line), FSR path slimming
+         (0.15-0.45 ms; first give the applet capture the native image, which today consumes the
+         4K composite before the main present; a refused format must fall back to today's path,
+         not turn FSR off), #831's transform feedback barrier (0.05-0.1 ms; add TRANSFER to the
+         pass-end barrier's destination since tuned4 has no barrier tracker), FSR and present
+         stage timestamps, and #1548's wait-for-idle line as a counter only. RCAS's cost (one
+         skeptic ~0.03 ms, the other 0.1-0.2) is read off the stage timestamps with the slider.
+         Later: upload reordering (~0.1 ms, a back-thread cost of the same size), the HDR 4K
+         composite (image quality, not speed: one HDR frame dump first, then the game's HDR
+         curve applied to FSR's 4K detail, behind LICHII_OOT_HDR_COMPOSITE).
+       - Dropped: the lighter dispatch barrier (<= 0.06 ms; the per-call times cited exclude the
+         barrier), #831's barrier tracker, #1548's keep-pass (no gain over LICHII_WFI_DEFER and
+         it skips tuned4's fragment-barrier split), #717 alone (it moves pass ends), list copy
+         defer, RCAS in the composite, the ASTC tail trim, the AA network check, FSR 4 on async
+         compute; frame generation on async compute and FSR 3.1 frame generation only if a live
+         FG pause shows the generation costing 1+ real fps.
+       - r63 session (~30 min, no build; HDR off, FG off, 120 fps lock, fullscreen, a 1 s GPU
+         sensor log): perf-trace-noprofile N, a no-FSR launcher F (N plus
+         EDEN_NX2_DLSS_REPLACEMENT=native; with oot_anti_aliasing NoSharpening it also skips the AA
+         network) as N, F, F, N, 60 s settle then 100 s each; then one windowed FG-on N launch
+         with the status-bar FG button clicked to pause and resume generation in 30 s segments
+         (ABBABAAB after 60 s). F is read as the back-corrected frame change, not fps; FG-live
+         decides fg-async. V (FSR 3.1), the live RCAS toggle and W (LICHII_WFI_DEFER) move to r64.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
