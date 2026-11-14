@@ -119,6 +119,13 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   times" while keeping "the native 1440p upscaled to 4k, no compromises on that" (no lower
   internal resolution, render scale or output); (2) then "focus on the smoothness aspect of the
   game": hitches and large frame drops when new shaders or textures load and when new areas load.
+- 2026-11-14, after the GPU plan (HANDOFF): GPU savings don't raise fps until the back thread is
+  faster, "so rather than doing nothing, we are planning for the future". "Make sure to not
+  entertain any optimizations for the gpu that would cost us performance on the back thread"
+  (upload reordering is out). "We also will not be using framegen in gameplay ideally": frame
+  generation tests and items are skipped for now. Setup: one 160 Hz monitor with FreeSync (the
+  higher tier), no other display; Adrenalin doesn't detect Lichii as a game. The GPU's fast and
+  slow sittings: "investigate this through the logs and help me troubleshoot" (HANDOFF).
 - A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
   asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
   usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;
