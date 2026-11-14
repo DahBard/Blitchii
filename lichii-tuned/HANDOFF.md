@@ -2736,6 +2736,10 @@ Own changes:
        4096 MiB and 256 MiB, against trace-smooth on the route); perf-trace and
        perf-trace-noprofile now set the clock probe. Nothing ran on hardware before the owner's
        first launch; every changed file passes the MinGW-target syntax check.
+     - CI (tuned cccc1ff9fc): build run #4 passed (artifact lichii-tuned-r64-pgo-lto); unit tests
+       run #4: 1405 test cases, 1404 passed and 1 skipped (the clock trace's own), the new
+       HostMemory call-trace and float atomic tests included; the "Run the clock trace" step
+       failed as in runs #2 and #3 (the runner's PDH setup takes ~7 s).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
