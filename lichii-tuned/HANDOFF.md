@@ -2610,6 +2610,30 @@ Own changes:
          with the status-bar FG button clicked to pause and resume generation in 30 s segments
          (ABBABAAB after 60 s). F is read as the back-corrected frame change, not fps; FG-live
          decides fg-async. V (FSR 3.1), the live RCAS toggle and W (LICHII_WFI_DEFER) move to r64.
+   - Smoothness brainstorm (owner, 2026-11-14: hitches when new shaders or textures load and at
+     area loads): six investigators (the measured hitches, heap maps, shaders and pipelines,
+     textures and buffers, guest loading and threads, other projects), then a synthesis; files in
+     the session scratchpad (smooth-brainstorm/). Measured on r62a/r62b (60 fps lock) and bp1:
+     - Budget of the frames over 33 ms (their excess over 16.7 ms, ~22.5 s in r62a+b): transition
+       frames over 250 ms inside a load 30% (bp1 41%), the 3 s after a load's last long frame
+       35%, the fade before a load 4%, zero-page pass overlap 3%, 3-25 s after a load 19% (13
+       points of it with host zstd at 20+ MiB/s), the rest small.
+     - Transition frames (750-920 ms, one per load): the back thread works 547-578 ms in each
+       while the front idles, and guest reads queue behind it for 201-401 ms per load window: an
+       emulator stall (uploads, staging, image creation and deletion, unmaps, the collector; the
+       split is unlogged), not the guest pausing.
+     - Shaders and pipelines: ~0 of it. No slow frame had a pipeline built on the GPU thread, a
+       held draw or an async translation; after r63's preparation only first visits outside the
+       ~5.7k-record disk cache remain.
+     - Heap maps and unmaps: frames over 33 ms per 10 s = 0.14 per ms/s of host map+unmap time
+       (R2 0.72 over 63 non-load windows); the per-call cost has a cheap state (~8 us a mapped
+       region, ~35 us an unmap) and a dear one, a session property. Almost all of it runs on
+       guest core 1. No project has a Windows fix for it; tuned4 already has #810, #1580, #1581,
+       the zero-clear skip and SEC_RESERVE.
+     - Others: the texture collector's write-back Finishes 1.5-2.6 s per route (~5.5 ms each),
+       host zstd at most 74 ms/s (the game's streamed blocks, upstream #869's path, are not
+       counted), a 10.02 s periodic guest-side spike (25-29% of the isolated spikes away from
+       loads).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
