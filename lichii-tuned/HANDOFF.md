@@ -2517,6 +2517,22 @@ Own changes:
      cost), trace-no-fsr (what FSR 4 and the 4K output cost once the cap no longer hides it),
      perf-trace again. ab-6 logs nothing to compare, ab-11 changes only the boot, ab-26 and
      trace-real-occlusion were slower before.
+   - Fountain benchmark (owner, 2026-11-14): standing in front of the Market fountain, the game's
+     most intensive spot (~2,750 draws a frame), 120 fps lock, frame generation off: the
+     standard test to compare builds (dataset r62-fountain/ in the session scratchpad; last
+     100 s of each run). r62: perf-trace-noprofile 55.0 fps (18.2 ms frames, p99 26.3 ms, 1% low
+     32.0), back thread 14.5 ms a frame, GPU busy 14.6 ms of the frame (83%), front 8.5 ms, the
+     busiest guest core 12.3 ms. Profiled (perf-trace) 46.8 and 48.1 fps (the profile costs
+     ~15%; the two runs give the noise, 1.3 fps); ab-25 47.7 (no change: zero-page passes cost
+     nothing in a still scene); trace-no-fsr 48.8, GPU 12.0 ms against 15.2 (FSR 4 with its 4K
+     output costs ~3.2 ms of GPU a frame, but the frame isn't GPU-bound yet). What holds the
+     frame: the back thread busy ~85% and the GPU at ~83%, with the front waiting for the back
+     ~445 ms/s (acquires 590/s ~225 ms, GPU-written list writers 94/s ~220 ms) while the back
+     waits for the front ~150 ms/s ('split wait'). Back zones per second there: method 115 ms,
+     uniform buffers 107, draw 76, update buffers 70, bank check 39, configure 38, read handles
+     33, fill image views 33, dynamic state 28. No current launcher unlocks more; the next gains
+     are the back thread's work (upstream's multithreaded back, which the owner waits for) and
+     the front's waits for it, then the GPU (FSR's ~3 ms) once the back is faster.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
