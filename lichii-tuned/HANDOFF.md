@@ -2460,6 +2460,34 @@ Own changes:
        (writes no manager showed: 0) and no 'BackX verify mismatch'; verify-blocks.bat's
        'Register block verify' (0 differ); stopping Ocarina and starting a game again without
        restarting Lichii (#1592).
+   - r63, 2026-11-14 (owner: "When I turn off framegen, then launch OOT, framegen automatically
+     turns back on" and "the game doesn't precache on every version. It will only precache if I
+     delete all my shaders"), one push for both:
+     - Frame generation: Ocarina's per-game config overrides `frame_gen` (every Ocarina boot since
+       r44 logs `MC Renderer.frame_gen: true`, C = the per-game value; also r58's), and its
+       flow scale (95) and target rate. The FG button and Configure > Graphics set the global
+       value, which that override beat at each boot (BootGame loads the per-game QtConfig); in
+       game the button's SetValue changed only the session's per-game copy, which nothing
+       writes. `frame_gen` is now a global-only Setting<bool> (src/common/settings.h): per-game
+       files' frame_gen keys are not read (ReadSettingGeneric skips non-switchable settings
+       there), the per-game Graphics page no longer shows it, and the FG button and its type
+       menu call OnSaveConfig() as the FSR button does. The other frame generation settings
+       stay per game.
+     - Precache per build: the compute precache's marker, the list of precached graphics
+       pipelines (upstream's ShaderWarm DriverStamp/WarmStamp: driver, device, cache version)
+       and the precompiled preparation's stamp (driver, GPU, PreparationVersion "tuned 1")
+       named no build, so a new build with the shaders kept skipped all three, though its
+       driver cache starts cold. PreparationPending (the desktop app's check) only tested that
+       the stamp file existed. Now Nx2Precompile::BuildStamp() (Common::g_build_version, e.g.
+       `<commit10>-tuned-r63-pgo-lto`) is in the prepared stamp, PreparationPending treats a
+       stamp without it as pending, and vk_pipeline_cache.cpp's PrecacheDriverStamp() (driver
+       version XOR BuildStampHash()) goes into upstream's stamps without changing their structs
+       or files. Each build's first launch precaches and prepares once (~15 minutes), later
+       launches of the same build skip it.
+     - Watch in the owner's first r63 sessions: the FG button off stays off after a relaunch of
+       Ocarina; the first launch logs no "prepared for this driver already" and no "compute
+       programs already done", the second launch logs "compute programs already done for this
+       driver and build" and "was prepared for this driver already".
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host

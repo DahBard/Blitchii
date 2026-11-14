@@ -106,6 +106,10 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   `r22-merge-nx2e` (`r22-merge-nx2d` was the first attempt, with #1486). Done on 2026-11-14:
   tuned4 `a8788276c`, `tuned` `ada9ce77c`; the base under the patch is now `85a2cc0ac7`
   (`r22-up-no1486`); r62.
+- 2026-11-14, r63: "When I turn off framegen, then launch OOT, framegen automatically turns back
+  on. Figure out why and fix it", and in the same push: "fix the problem where the game doesn't
+  precache on every version. It will only precache if I delete all my shaders": frame generation
+  on/off is global only, and each new build precaches and prepares once (HANDOFF).
 - A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
   asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
   usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;
