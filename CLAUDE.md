@@ -141,8 +141,12 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   they are). Its CI builds pgo-lto on push (Actions minutes and storage are limited), keeps artifacts
   3 days and numbers builds run + 60. The owner deletes the old public fork once a build here passes.
 
-Usage: the owner's plan has limited usage per 5-hour window. Keep sessions lean: few multi-agent
-workflows, and commit and push at each checkpoint so work survives a cut-off.
+Usage (owner, 2026-11-14): "make it a general rule to use as many agents with ultra code as it
+take to get the fastest results, we will not be conservative with usage any more." Use as many
+agents as the fastest result needs. A workflow runs at most 2 agents at once on this 4-CPU
+machine, so run several workflow instances (or background agents) side by side. Usage is still
+limited per 5-hour window: commit and push at each checkpoint so work survives a cut-off, and
+continue when usage renews.
 
 Builds are Windows only. On 2026-11-11 the owner dropped the CachyOS (Linux) build: "we won't be
 building towards Linux in the future". The build workflow, what the tuned build contains, the test
