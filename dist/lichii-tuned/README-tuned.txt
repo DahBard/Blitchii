@@ -103,7 +103,7 @@ below), plus:
    (r23: ~650,000 page compares a second, 99.7% unchanged; LICHII_BANK_CHECK=0 compares all
    again), cheaper texture uploads on the GPU thread (staging buffers kept, uploads that GPU
    copies overwrite skipped, large untiles on helper threads; LICHII_TEXTURE_UPLOADS=0 as
-   before), texture handles that are really storage buffer addresses bind no texture (the
+   before, but for the cold hints since r62), texture handles that are really storage buffer addresses bind no texture (the
    waterfall flicker; upstream Lichii now does this too), macro reads that overlap
    queued constant buffer writes take those words from the queue instead of waiting (94% of
    those waits in r23; LICHII_DMA_MIXED_READS=0 as before), pipelines keyed only by the vertex
@@ -410,6 +410,44 @@ below), plus:
      (backed up; Restore brings them back).
  * r61: r60 from the new private repository, with 35 of the test launchers removed (the list
    below has the 13 left; verify-r55.bat is now verify.bat). The emulator itself is r60's.
+ * r62: upstream Lichii nx2 87d84d513c merged (17 commits after build 171), without its #1486:
+   - GPU back thread: the 3D state the GPU thread sends goes as one block per run of writes,
+     which the back stores at once instead of one register at a time (#1585; in upstream's
+     Mario Kart World profile that per-register work was 2.3 ms of each frame). The back also
+     skips locks and passes that change nothing (#1586): gathers of CPU writes when none were
+     collected, the buffer cache's lock for inline writes away from GPU data, clearing buffer
+     usage it never set, building the same vertex input state again, and comparing uniform data
+     that changes at every bind. Upstream measured Mario Kart World, not Ocarina: compare
+     perf-trace-noprofile.bat with r61 over the same route.
+   - Emulated CPU: the game's function calls and returns run as the host CPU's own call and
+     return instructions, so the CPU predicts the returns (#1531). The rest of #1531 is round
+     18's code generation, now upstream's copy, without switches.
+   - Memory: guest memory is hinted cold (taken out of RAM at once) only while less than 4 GB of
+     RAM is free (#1581). Until r61, uploaded buffers (every 600 frames) and the game's GPU-only
+     regions (every 30 s) were hinted every time; textures already weren't, and
+     LICHII_TEXTURE_UPLOADS no longer changes that. The zero-page passes wait, up to 5 s, while
+     the game maps a lot of memory (loads, spawns), where they stalled its map calls by 10-14 ms
+     (#1580; its faster page check and 5-minute backoff were already here since r50).
+   - Fixes: a draw that needs a new pipeline right after the game's shader memory was unmapped
+     or remapped (scene changes) no longer reads freed shader data (#1573); starting a game
+     again after stopping one while a GPU channel waited no longer crashes (#1592); the stop's
+     own timer no longer arms a second watchdog that could end a shutdown still making progress
+     (#1576, upstream's copy of round 20's wait). #1570, #1574, #1575 and #1590 fix other games.
+   - First launch: Ocarina's shader precache file is built again, once, before the game starts
+     (a "Precache shaders" window; let it finish, or the next launch starts it again), and the
+     loading screen then builds its ~4,000 compute programs again: #1577 rebuilds a precache an
+     older version made. The pipeline preparation stays done.
+   - Kept over upstream: #1486, upstream's way of sending compute work whose size the GPU wrote
+     into a command list without waiting for those words, is left out. This build has done that
+     its own way since round 18 (#805's path) with no problem reported, and with #1486 the GPU
+     thread would lose track of what Ocarina's compute work releases at each such dispatch and
+     wait for its back thread instead.
+   - Launchers: ab-16 is gone, as #1531 has no switches (if the emulated CPU crashes or
+     glitches, CPU accuracy Paranoid turns the code generation off, much slower). verify.bat
+     also checks #1586's skips; the new verify-blocks.bat checks #1585's blocks, which
+     verify.bat's other checks turn off. Still 13 launchers.
+   - NVIDIA DLSS's quality setting now also sets Ocarina's render resolution (#1589): NVIDIA
+     builds only, nothing changes here.
  * Recommended speed settings, applied once on first start (change them freely afterwards):
    GPU accuracy Low, asynchronous shaders on, reactive flushing off, asynchronous presentation
    on, GPU video decoding, shader precache Always, Switch 2 draws with unbuilt pipelines
@@ -428,13 +466,12 @@ comes from the compiler (only the pgo builds show it) or from the source.
 
 A/B launchers (this build with one change switched off or on; compare the same scene each time).
 r61 removed the A/Bs whose questions are settled or whose switches are gone, the old traces and
-the verify runs before r55; the notes above still name some of them for the builds that had them.
+the verify runs before r55, and r62 ab-16 (upstream #1531 dropped its switches); the notes above
+still name some of them for the builds that had them.
  ab-6-official-texture-cache.bat  texture cache collects from 5 GiB, as official Lichii did
                               before 2026-11-08
  ab-11-official-shader-cache.bat  boot compiles only what the last sessions used
                               (EDEN_NX2_PRELOAD_ALL_PIPELINES=0)
- ab-16-round17-jit.bat        #717's code generation off, logged like perf-trace.bat: the first
-                              test when the emulated CPU crashes or glitches
  ab-17-no-oot-patches.bat     the Ocarina patches off (zstd, string compares, poll backoff, wider
                               core masks), logged like perf-trace.bat
  ab-25-no-zero-trim.bat       no zero-page passes (EDEN_NX2_ZERO_TRIM=0): pages holding only
@@ -451,8 +488,14 @@ the verify runs before r55; the notes above still name some of them for the buil
  verify.bat                   checks this build against the slow ways while you play, with
                               perf-trace's logging ("Native bank check" missed and bitsets
                               missed, "Read download check" differing bytes, the delta descriptor
-                              and uniform keep mismatches should stay 0, no "Nx2Perf" errors);
-                              slower. It was verify-r55.bat
+                              and uniform keep mismatches and "BackX gather checks" writes no
+                              manager showed should stay 0, no "Nx2Perf" or "BackX verify
+                              mismatch" errors); slower. It was verify-r55.bat
+ verify-blocks.bat            checks the 3D register blocks (r62, upstream #1585) against the
+                              writes one by one, with perf-trace's logging: the "Register block
+                              verify" line's blocks that differ should stay 0; slower.
+                              verify.bat's EDEN_NX2_PERF_VERIFY turns the blocks off, so it
+                              doesn't check them
  perf-trace.bat               default settings plus GPU thread zones, emulated CPU cores, frame
                               times and the heap and clock traces in the log
                               (EDEN_NX2_GPU_PROFILE=1, EDEN_DKB_FRAME_TRACE=1,

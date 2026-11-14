@@ -288,6 +288,8 @@ enum class Counter : u32 {
     Entry3dExecutable, ///< 3D executable methods
     Entry3dCbRuns,     ///< Runs of single constant buffer words sent up together...
     Entry3dCbWords,    ///< ...and their words
+    Entry3dStateBlocks, ///< 3D register blocks (GpuSplit::StateWrite)...
+    Entry3dStateWrites, ///< ...and their writes
     EntryOtherDirect,  ///< Other engines' Direct writes
     EntryOtherSunk,    ///< Other engines' state writes held for their next executable method
     EntryOtherExecutable,
@@ -802,14 +804,16 @@ inline void Report(const char* thread_name = "GPU thread", bool report_all_conte
                      : std::string{});
     }
     if (counter(Counter::EntryEngines) != 0 || counter(Counter::Entry3dDirect) != 0 ||
-        counter(Counter::EntryOtherExecutable) != 0) {
+        counter(Counter::Entry3dStateBlocks) != 0 || counter(Counter::EntryOtherExecutable) != 0) {
         const auto rate = [&](Counter which) { return counter(which) * 1e9 / window_ns; };
         LOG_INFO(HW_GPU,
-                 "{} ring entries per second: 3D direct {:.0f}, sunk {:.0f}, executable {:.0f}, "
+                 "{} ring entries per second: 3D direct {:.0f}, sunk {:.0f}, register blocks "
+                 "{:.0f} ({:.0f} writes), executable {:.0f}, "
                  "constant buffer runs {:.0f} ({:.0f} words) | other engines direct {:.0f}, sunk "
                  "{:.0f}, executable {:.0f} | multi {:.0f} | calls {:.0f} ({:.0f} fast draw "
                  "neutral) | engine switches {:.0f}",
                  thread_name, rate(Counter::Entry3dDirect), rate(Counter::Entry3dSunk),
+                 rate(Counter::Entry3dStateBlocks), rate(Counter::Entry3dStateWrites),
                  rate(Counter::Entry3dExecutable), rate(Counter::Entry3dCbRuns),
                  rate(Counter::Entry3dCbWords), rate(Counter::EntryOtherDirect),
                  rate(Counter::EntryOtherSunk), rate(Counter::EntryOtherExecutable),
