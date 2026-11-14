@@ -2488,6 +2488,35 @@ Own changes:
        Ocarina; the first launch logs no "prepared for this driver already" and no "compute
        programs already done", the second launch logs "compute programs already done for this
        driver and build" and "was prepared for this driver already".
+     - Review (workflow wf_9693c0b2-155, two reviewers and a skeptic per finding): the
+       frame generation change is clean. Two minor findings, both fixed in tuned4 `0efc0c003`:
+       the prepared stamp held one build, so switching builds (r63/r64, pgo-lto/pgo-train, back
+       to r62) prepared again at every switch; it now keeps a line per build (this build's, up to
+       three others', and a pre-r63 line first, where r62 and older compare). And a pgo-train
+       build would have run the whole preparation in the instrumented exe, filling its profile:
+       Mode() is 0 there unless EDEN_NX2_PRECOMPILE=1. Upstream's single-stamp files
+       (warm-compute.done, precache-graphics.bin) still change at each switch, about 3.9k
+       entries against a warm driver cache. Not pushed as a build yet: the owner asked to hold
+       the push for A/B testing with r62 first.
+   - r62 same-route runs (owner, 2026-11-14: perf-trace-noprofile twice, 60 fps lock as before;
+     parsed with r55-bp/parse_logs.py, dataset r62-noprofile/ in the session scratchpad),
+     steady 10 s windows by draws a frame, r62 (2 runs) against bp1 (r55, best performance):
+     light <1500: 60.0 fps (cap; bp1 59.9), 1% low 36.7 (33.9), back 7.7 ms a frame (10.6);
+     medium 1500-2100: 59.9 (58.7), 1% low 35.9 (31.2), back 11.0 (13.3); heavy 2100-2700:
+     57.3 (53.0), 27.1 (24.7), back 13.3 (16.3); heaviest 2700+: 50.9 (45.1), 22.4 (21.6), back
+     15.6 (19.7). Back thread 11.3 ms a frame overall against 14.0, same clocks (back 4.17 GHz
+     against 4.13), package 46.8-48.7 W against 53.0. The dips left come with the game's heap
+     maps and unmaps at area changes (map 100-200 ms/s, nearly all in the host calls, 7k-20k
+     page faults a second), as in bp1. The zero-page passes trim only 3-30 MiB of ~10 GB
+     resident in r62 (ab-25's "about 7 GB" is old), each reading all of it (~1 s every 10-40 s);
+     2 of 14 passes coincided with 52-56 ms frames.
+   - From now on (owner, 2026-11-14): test runs lock at 120 fps with frame generation off, so
+     compare with r62's 60-fps runs only where they were below 60. Suggested A/B session at
+     120 fps, same route: perf-trace-noprofile (the new build-to-build baseline), perf-trace,
+     ab-25 (zero-page passes off; same logging as perf-trace: frame times, RAM available, map
+     cost), trace-no-fsr (what FSR 4 and the 4K output cost once the cap no longer hides it),
+     perf-trace again. ab-6 logs nothing to compare, ab-11 changes only the boot, ab-26 and
+     trace-real-occlusion were slower before.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
