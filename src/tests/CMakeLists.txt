@@ -247,6 +247,12 @@ create_target_directory_groups(tests)
 target_link_libraries(tests PRIVATE common core audio_core input_common video_core frontend_common)
 target_link_libraries(tests PRIVATE ${PLATFORM_LIBRARIES} Catch2::Catch2WithMain Threads::Threads)
 
+# The split tests keep up to three GpuSplits (320 KiB of write sets each since 129c827f08) and two
+# Maxwell3D fixtures in one frame, past the 1 MiB main thread stack MinGW links by default.
+if (MINGW)
+    target_link_options(tests PRIVATE "LINKER:--stack,8388608")
+endif()
+
 if (TARGET dynarmic::dynarmic)
     target_sources(tests PRIVATE core/jit_codegen_options.cpp core/jit_ordered_loads.cpp core/window_trace.cpp)
     target_link_libraries(tests PRIVATE dynarmic::dynarmic)
