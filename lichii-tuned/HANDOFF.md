@@ -2533,6 +2533,43 @@ Own changes:
      33, fill image views 33, dynamic state 28. No current launcher unlocks more; the next gains
      are the back thread's work (upstream's multithreaded back, which the owner waits for) and
      the front's waits for it, then the GPU (FSR's ~3 ms) once the back is faster.
+   - GPU frame time brainstorm (owner, 2026-11-14: "focus on the GPU frame times", native 1440p
+     -> 4K kept): five investigators (measured GPU timeline, FSR and present path, Vulkan on AMD,
+     settings, other projects), a synthesis, then 18 skeptics in six groups; files in the
+     session scratchpad (gpu-brainstorm/: synthesis.json, verify/). The synthesis, before the
+     skeptics:
+     - Budget at the fountain (r62, unprofiled): GPU busy 14.4 ms in a 17.6 ms span, 43
+       submissions that never overlap. Timed draws and dispatches 8.4 ms (2,896 items at 2.9 us;
+       no hotspot, the top 8 programs are 1.8 ms). Untimed ~6.5 ms: the FSR path ~3.2 ms (FSR 4's
+       network with RCAS ~1.4-2.3 ms by AMD's figure, our passes ~0.55-0.8 ms by bandwidth, up to
+       ~1 ms unaccounted) and ~3.1 ms of pass ends, barriers, clears, copies and present passes.
+       Per frame ~199 render passes (68 end at the guest's waits for idle, 36 at its query sync,
+       31 at in-order uploads, 24 at clears), ~47 submissions, ~150 dispatches each behind a full
+       barrier.
+     - Co-limit: with frame generation off the back thread holds the frame. A GPU ms saved buys
+       ~0.15-0.25 ms of frame (~0.5 fps); all GPU items together at most ~0-0.8 ms (0 to +2.5
+       fps). GPU savings become fps with frame generation on (AMD's generation runs on the game
+       queue, outside gpu_busy_ms) and once Fritchii's multithreading speeds the back up. Judge
+       GPU items by `draws_timed=0` gpu_busy_ms and gpu_frame_span_ms, not by fps.
+     - HDR bug: with HDR output on, the screen shows the game's 1440p frame (FSR's 4K image
+       scaled back into the game's 1440p target, then stretched bilinearly to 4K) while the GPU
+       still pays for FSR's 4K image. The 4K composite only runs for the SDR final pass
+       (vk_rasterizer.cpp:1549-1586, 4904-4910). HDR off is the only way to see FSR's 4K output
+       until it is fixed.
+     - Spread: the same r55 build and settings ran 10.2 against 13.1 ms median GPU busy in two
+       sittings; two runs of one sitting differ by ~0.3 ms and 1.3 fps. A/B arms go in one
+       sitting, alternating, with the GPU clock logged.
+     - Ranked: r63 tests without a build (calibration arms: unprofiled no-FSR, frame generation
+       on, RCAS 0% live, FSR 3.1 once as a price; a GPU state check: clock log, Adrenalin extras
+       and PCIe ASPM off; LICHII_WFI_DEFER=1). Builds behind switches: native float atomic adds
+       for the ambient light kernel s6:45384f519a8eacd3 (0.2-0.3 ms), FSR path slimming
+       (0.2-0.6), upstream #717's lazy query sync (0.05-0.35), #1548's wfi_keep_pass, wfi_dedup
+       and list_copy_defer (0.05-0.4), #831's transform feedback barrier (0.02-0.2), a lighter
+       dispatch barrier, RCAS in the composite, frame generation on async compute (normal play),
+       the HDR 4K composite. After Fritchii's merge: upload reordering, #831's barrier tracker,
+       FSR 4 on async compute. Dropped: a lower internal resolution or output, FSR 3.1 as the fix,
+       fp16 (r11's wrong colour on this driver), longer fence-flush windows, image flag changes,
+       dynamic state changes (pipeline keys).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
