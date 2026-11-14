@@ -126,6 +126,10 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   generation tests and items are skipped for now. Setup: one 160 Hz monitor with FreeSync (the
   higher tier), no other display; Adrenalin doesn't detect Lichii as a game. The GPU's fast and
   slow sittings: "investigate this through the logs and help me troubleshoot" (HANDOFF).
+- 2026-11-14, r64: the exit crash fix, the GPU and smoothness items behind switches (off by
+  default), the GPU clock probe and the new traces (HANDOFF). The owner's r63 sitting showed the
+  GPU's fast/slow state is the driver's on-demand clock, not GPU-Z, the tune, the Claude app or
+  Adrenalin's game profile; next is a Radeon Developer Panel Peak clock run.
 - A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
   asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
   usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;

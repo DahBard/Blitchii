@@ -2709,6 +2709,33 @@ Own changes:
        ms): a callback blocks. Revisits re-create 669-917 images: the texture cache sat at its
        8.8 GB threshold all session. Picked for r64: pre-made device memory and a staging ring
        (EDEN_NX2_PREALLOC_MIB, EDEN_NX2_STAGING_RING_MIB) and #1571 (EDEN_NX2_TEST_1571).
+   - r64 (branch r64 = tuned4; one branch per item off r63, each implemented by one agent and
+     reviewed by another, then merged): r63 plus
+     - the exit crash fix (r64-exitfix);
+     - GPU items, each off unless set: native float atomic adds (EDEN_NX2_NATIVE_FLOAT_ATOMICS=1;
+       VK_EXT_shader_atomic_float is enabled in both arms so the A/B differs in SPIR-V only; the
+       off arm's SPIR-V is byte-identical to r63 in a harness), the transform feedback barrier
+       only after passes that used it with TRANSFER added to the pass-end barrier
+       (LICHII_TFB_BARRIER_LAZY=1), FSR path slimming (LICHII_FSR_SLIM letters: b one 1440p
+       output+reference pass, d FSR reads the E5B9G9R9 colour without the copy only where the
+       device supports that format as a storage image (probably not on AMD; logged), c 10-bit
+       FSR output in SDR; a, the composite into the frame, was left out as unclean);
+     - smoothness items, each off unless set: FSR 4 built at the title screen
+       (LICHII_FSR_EARLY_CONTEXT=1), a device memory reserve that keeps freed 16 and 256 MiB
+       blocks and pre-makes up to the given MiB at boot within budget rules
+       (EDEN_NX2_PREALLOC_MIB; the review made it leave a budget-eighth for Windows' budget
+       dips and give everything back if a driver allocation fails), a host staging ring
+       (EDEN_NX2_STAGING_RING_MIB), upstream #1571 retiring overwritten render targets
+       (EDEN_NX2_TEST_1571=1; its OpenGL flush fix applies with the switch off, OpenGL only);
+     - diagnostics: the GPU clock probe (EDEN_NX2_GPU_CLOCK_PROBE=1: one wave a second reads the
+       shader and realtime clocks, 'GPU clock probe in 10 s'), 'DKB fsr_stages' per sampled frame,
+       the heap trace's host phase split and slow-call lines (EDEN_NX2_HEAP_TRACE_SLOW_US, default
+       2000), the 'Wait for idle per second' counter, the 'Device memory in 10.0 s' line.
+     - Launchers: trace-smooth.bat, ab-41-gpu-items.bat (the GPU items, against
+       perf-trace-noprofile at the fountain), ab-42-smooth-items.bat (the smoothness items with
+       4096 MiB and 256 MiB, against trace-smooth on the route); perf-trace and
+       perf-trace-noprofile now set the clock probe. Nothing ran on hardware before the owner's
+       first launch; every changed file passes the MinGW-target syntax check.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
