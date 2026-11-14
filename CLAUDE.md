@@ -110,6 +110,15 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   on. Figure out why and fix it", and in the same push: "fix the problem where the game doesn't
   precache on every version. It will only precache if I delete all my shaders": frame generation
   on/off is global only, and each new build precaches and prepares once (HANDOFF).
+- 2026-11-14, tests: the owner compares builds at the Market fountain (Ocarina's heaviest spot)
+  with a 120 fps lock and frame generation off; perf-trace-noprofile is the comparison (HANDOFF).
+- 2026-11-14, direction: "Zortos has largely given up on multithreading, it is Fritchii who's
+  multithreading we will merge now." Upstream's multithreaded back thread isn't coming; Fritchii's
+  comes in with its next release. Our own back-thread work (option 1) waits, since Fritchii's
+  pipeline changes would conflict with it. Instead, in this order: (1) "focus on the GPU frame
+  times" while keeping "the native 1440p upscaled to 4k, no compromises on that" (no lower
+  internal resolution, render scale or output); (2) then "focus on the smoothness aspect of the
+  game": hitches and large frame drops when new shaders or textures load and when new areas load.
 - A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
   asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
   usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;
