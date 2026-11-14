@@ -2634,6 +2634,31 @@ Own changes:
        host zstd at most 74 ms/s (the game's streamed blocks, upstream #869's path, are not
        counted), a 10.02 s periodic guest-side spike (25-29% of the isolated spikes away from
        loads).
+     - Synthesis (smooth-brainstorm/synthesis.json): 92-96% of the hitch excess comes with area
+       loads. In 23 transition frames the game had already presented 4-344 ms into the gap and
+       its composite came 172-1553 ms later: 88% of their time is the back finishing frames the
+       game handed over. Each gap creates 200-1000 images (ASTC kept as RGBA8 16 -> 256, one
+       1365x1365x90 array of ~850 MiB), and in the first transition of every session FSR 4's
+       upscaler and context are built on the back: 214-232 ms (25-28% of that session's worst
+       freeze). The collector's Finishes are a steady cost, not hitches; ASTC decode submits wait
+       0-1 ms per 5 s; OnCPUWrite made 0 calls.
+     - Plan: one traced route run on r63 (trace-smooth.bat: perf-trace-noprofile's traces plus
+       EDEN_NX2_STUTTER_TRACE=1, EDEN_NX2_STUTTER_DETAIL_MS=35, EDEN_NX2_GUEST_THREAD_STATS=1,
+       EDEN_NX2_PRESENT_FENCE_TRACE=1, EDEN_NX2_BACK_IDLE_TRACE=1, EDEN_NX2_TC_LOG=1,
+       EDEN_NX2_BUFFER_TRACE=1, EDEN_NX2_FS_READ_TRACE=1, EDEN_NX2_HOSTTIMING_STATS=1; ~2-5%
+       slower steady frames; 3+ loads and a revisit, 120 fps lock, FG and HDR off), optionally a
+       Defender process exclusion run (the owner's security call). r64 adds, behind switches, the
+       FSR 4 context built at the title screen (LICHII_FSR_EARLY_CONTEXT) and the heap trace's
+       slow-call lines and host phase split (lock wait, syscalls, on-CPU), plus at most two of:
+       pre-made image memory or a staging ring, #869's streamed-block zstd, HostTiming
+       placement, #1571, the presenting core's placement, picked by the trace. Then the heap
+       host-call fix the split points to (r65). After Fritchii's merge: texture uploads off the
+       back (the main lever for the transitions) and JIT warm-up (Fritchii v6 or #1225).
+       Realistic: r64 takes 3-10% off the hitch excess, the heap fix 3-8% more if the presenting
+       thread pays for the calls. Dropped: pipeline work (0% of the budget), the zero-page pass
+       A/B (ab-25 on r54 already showed none), LP-E affinity (LP-E busy 0-1%), collector and ASTC
+       submit changes, #1602, #1218, #1242, the borderless flip fix (the owner plays in
+       exclusive fullscreen), MMCSS, the 10 s spike hunt (<1% of the excess), hot pages.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
