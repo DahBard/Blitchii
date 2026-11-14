@@ -2679,6 +2679,36 @@ Own changes:
      runtime from the driver's amdadlx64.dll: GFX and VRAM clock, board power, hot spot,
      utilization; its own thread, off unless its switch is set) would show the state in every
      log; the probe moves to s6:75d4369f3b1f5868 once native float atomics change 45384f51.
+   - r63 sitting (owner, 2026-11-14; GPU-Z logging, the Claude app open in every run, Adrenalin's
+     global features off, Tuning Custom: -60 mV, power +10%, VRAM 2614 MHz fast timing; HAGS on;
+     160 Hz FreeSync; analysis in the session scratchpad, r63-sitting/):
+     - Fountain: run 1 56.1 fps (1% low 33.5), GPU busy 13.1 ms, probe 209 us (fast); run 2
+       54.4 fps, 14.7 ms, probe 256 (between); r62 54.9 fps, probe 264. The back works 14.1 ms a
+       frame in all three: r63 = r62, and the fast state alone is worth ~1.6 ms of GPU and ~1.7
+       fps there. GPU-Z logged both runs (the trace run's file covers run 1), so it is not the
+       trigger; nor are the tune or the Claude app. The Adrenalin game profile changed nothing
+       (54.0-54.3 fps, same clocks). GPU-Z: ~2.45-2.56 GHz median at ~90 W and 85% load, never
+       held near the peak; in the trace run the fountain sat at a flat 1.84 GHz (probe 346). The
+       probe follows ~635 us*GHz / clock. GPU-Z's 1 s clock doesn't show the fast/between split
+       (run 1 was 11% faster per frame at the same reported clock); the probe does. Next: Radeon
+       Developer Panel's Peak clock against Normal.
+     - Exit crash (r62 and r63, every session; not in r55 or r58): VmaBlockVector::Free from
+       vk::ImageRecycler::Clear in Device::~Device (r63 symbols): the separate VMA pools
+       (upstream 1f0e3b88c4, 9bf61dc390) were destroyed before the recycler (EXP42, d708c15c78)
+       freed images whose memory lives in the medium-image pool. After the shader cache and
+       settings are saved, so nothing was lost but the crash dump. Fixed on branch r64-exitfix
+       (7fa7b21d3a): Clear before the pools go.
+     - Route trace (trace-smooth.bat, 120 fps lock, five loads A-B-C-B-A): 152 frames over 33 ms,
+       8.63 s of excess: transitions 39%, load tails 36%, 3-25 s after loads only 6% (the heap
+       calls stayed cheap all session: map+unmap at most 72 ms/s), a 10.03 s periodic spike in
+       the game's own work 8.6% (new at 120 fps), isolated 6%, menu 3%. The transitions are the
+       back's own work: vkAllocateMemory alone 29-50% of its time in each (1,073 of 2,867 ms over
+       8 frames; L2's 9 long calls averaged 14 ms), staging buffer creation 31-78 ms a load, the
+       texture upload zone 32-74%, FSR 4's first context 176 ms. File reads under 5 ms, no
+       pipeline builds. HostTiming wakes on time but its events fire late at transitions (p99 58
+       ms): a callback blocks. Revisits re-create 669-917 images: the texture cache sat at its
+       8.8 GB threshold all session. Picked for r64: pre-made device memory and a staging ring
+       (EDEN_NX2_PREALLOC_MIB, EDEN_NX2_STAGING_RING_MIB) and #1571 (EDEN_NX2_TEST_1571).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
