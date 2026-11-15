@@ -2932,6 +2932,14 @@ Own changes:
        known -Wshadow), the routing unit tests ([global_memory], 6 cases), the unwind guard on
        52 synthetic cases, the trace under ThreadSanitizer and ASan, the patch applied to
        r22-up-5 equals tuned4's tree. Nothing ran on Windows before CI.
+     - CI (tuned bfe83e2de4): build run #6 passed in 10 min (artifacts lichii-tuned-r66-pgo-lto and
+       its symbols, kept until 2026-11-18 06:15 UTC); unit tests run #6: 1,523 test cases, 1,520
+       passed and 3 skipped (71,386,980 assertions), and the clock trace passed. Its stack overflow
+       check stopped at the first deliberate crash (the msys2 shell runs with errexit, and MSYS2
+       reports 0xC00000FD as 127); fixed in 668b733632. Run #7: all four modes (guarded, overflow,
+       main, chkstk) wrote 'Host crash: unhandled exception 0xc00000fd ... stack overflow reported
+       by thread ... "CrashReporter"', walked the stack to the thread start (54,945, 55,136, 55,133
+       and 2,042 frames) and wrote eden_crash.dmp (16.8 MB each).
      - Test plan: delete lichii-cache.v2.bin.booting if r65's last launch left it, otherwise
        r66's first launch skips the boot build and the preparation. The launch that builds,
        with crash-trace.bat, is the test: 98da1b4bd085f63c's END line in pipeline-builds.txt.
