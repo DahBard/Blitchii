@@ -1,0 +1,22 @@
+{
+ "game": "0400486024DEC000",
+ "note": "The owner's path from the title to Link at his save (2026-11-15): A four times. Link is never moved: a step may press only A, and B backs out of an unknown screen. No step presses while the log's draws are at the world's level (max_press_draws). bench.bat check records each step's screen in C:\\LichiiBench\\refs.",
+ "hold_s": 0.12,
+ "thumb_threshold": 24,
+ "poll_s": 1.0,
+ "stall_s": 20,
+ "unknown_s": 15,
+ "change_timeout_s": 8,
+ "demo_draws": 300,
+ "demo_press": "B",
+ "recover_press": "B",
+ "max_press_draws": 1000,
+ "steps": [
+  {"name": "press-1", "say": "the title screen (first A)", "press": ["A"], "min_fps": 100, "stable_s": 2.0, "timeout_s": 240},
+  {"name": "press-2", "say": "the screen for the second A", "press": ["A"], "stable_s": 1.5, "timeout_s": 40},
+  {"name": "press-3", "say": "the screen for the third A", "press": ["A"], "stable_s": 1.5, "timeout_s": 40},
+  {"name": "press-4", "say": "the screen for the fourth A (it loads the save)", "press": ["A"], "stable_s": 1.5, "timeout_s": 40},
+  {"name": "arrival", "say": "Link standing at his save at the Market fountain", "press": null,
+   "draws": [2600, 3200], "fps": [30, 70], "stable_s": 3.0, "timeout_s": 120}
+ ]
+}

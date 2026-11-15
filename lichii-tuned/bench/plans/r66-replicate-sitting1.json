@@ -1,0 +1,24 @@
+{
+ "name": "r66 fountain: replicate sitting 1",
+ "note": "r66 sitting 1 automated: N, ab-43 (native float atomics) and ab-44 (lazy TFB barrier). ab-43 changes SPIR-V, so it gets its own warm-up launch, as N does. Sitting 1 decided both DROP; this sitting must reach the same verdicts.",
+ "kind": "fountain",
+ "build": "bfe83e2de4",
+ "arms": {
+  "N":   {"base": "perf-trace-noprofile.bat", "env": {}},
+  "A43": {"base": "perf-trace-noprofile.bat", "env": {"EDEN_NX2_NATIVE_FLOAT_ATOMICS": "1"},
+          "expect_lines": ["Float atomic add: native"]},
+  "A44": {"base": "perf-trace-noprofile.bat", "env": {"LICHII_TFB_BARRIER_LAZY": "1"}}
+ },
+ "warmup": ["N", "A43"],
+ "blocks": [["N", "A43", "A43", "N"], ["A44", "N", "N", "A44"],
+            ["A43", "N", "N", "A43"], ["N", "A44", "A44", "N"]],
+ "settle_s": 60, "measure_s": 100, "cooldown_s": 60, "warmup_measure_s": 30,
+ "gates": {"probe_mhz": "sitting", "probe_band_pct": 3, "cpu_band_pct": 1.5, "draws": [2600, 3200],
+           "settings": {"force_max_clock": true}},
+ "rules": [
+  {"item": "A43", "control": "N", "metric": "gpu_busy_ms", "better": "lower", "min_effect": 0.10,
+   "guards": [{"metric": "back_work_ms", "better": "lower", "max_worse": 0.10}]},
+  {"item": "A44", "control": "N", "metric": "gpu_busy_ms", "better": "lower", "min_effect": 0.05,
+   "guards": [{"metric": "back_work_ms", "better": "lower", "max_worse": 0.10}]}
+ ]
+}
