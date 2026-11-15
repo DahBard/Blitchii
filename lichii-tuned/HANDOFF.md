@@ -2869,6 +2869,9 @@ Own changes:
      - launchers: ab-43 native atomics and ab-44 the lazy TFB barrier (against
        perf-trace-noprofile), ab-45 #1571 (against trace-smooth), ab-46 the pipeline binary store,
        spike-hunt; ab-41 and ab-42 are gone.
+     - CI (tuned c61c71678f): build run #5 passed in 33 min (artifacts lichii-tuned-r65-pgo-lto
+       and its symbols, kept until 2026-11-18 03:13 UTC); unit tests run #5 still building at
+       03:25 UTC.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
