@@ -119,6 +119,11 @@ class Navigator:
     def bands_ok(self, step, look):
         if step.get("press") and look.draws is not None and look.draws >= self.max_press_draws:
             return False  # the world is drawing: never a menu step, whatever the thumbnail says
+        ref = self.refs.get(step["name"])
+        ref_draws = ref.get("draws") if ref else None
+        if step.get("press") and ref_draws is not None and look.draws is not None and \
+                abs(look.draws - ref_draws) > max(8, 0.25 * ref_draws):
+            return False  # menus (and loads) that look alike draw differently
         lo_hi = step.get("draws")
         if lo_hi and look.draws is not None and not lo_hi[0] <= look.draws <= lo_hi[1]:
             return False
@@ -174,7 +179,19 @@ class Navigator:
                 return True
             if look.thumb is None and before.thumb is not None:
                 return True  # a fade or load: no frame within the screenshot's timeout
+            if self.draws_moved(before, look):
+                return True  # menus that look alike still draw differently (and a load draws ~5)
         return False
+
+    def draws_moved(self, before, look):
+        """True when the draws a frame left the pressed screen's level, or the world is drawing."""
+        if look.draws is None:
+            return False
+        if look.draws >= self.max_press_draws:
+            return True
+        if before.draws is None:
+            return False
+        return abs(look.draws - before.draws) >= max(8, 0.25 * before.draws)
 
     def do_press(self, k, look):
         step = self.steps[k]
@@ -195,11 +212,16 @@ class Navigator:
                 return {"frames": None, "connection_lost": True}
             if self.wait_change(k, look):
                 return {"frames": frames, "repressed": repressed}
+            after = self.look()
+            if self.draws_moved(look, after):
+                # The thumbnail barely changed but the game moved on (a load or the world): don't
+                # press into it.
+                return {"frames": frames, "repressed": repressed, "late_change": True}
             if repressed:
                 raise NavError(f"{step['name']}: the screen didn't change after pressing twice")
             self.record["recoveries"].append(f"{step['name']}: no change, pressed once more")
             repressed = True
-            look = self.look()
+            look = after
             if not self.matches(k, look):
                 # The screen moved on after all (a slow fade): don't press into the next one.
                 return {"frames": frames, "repressed": False, "late_change": True}
@@ -261,6 +283,14 @@ class Navigator:
                     break
                 look = self.look()
                 now = self.clock.now()
+                last = len(self.steps) - 1
+                if k < last and look.draws is not None and look.draws >= self.max_press_draws \
+                        and self.arrival_steady(self.steps[last]):
+                    # The save loaded with fewer presses than the script has: never press in the
+                    # world, go straight to the arrival step.
+                    self.record["recoveries"].append(f"{name}: the world is already drawing")
+                    k = last
+                    break
                 if self.matches(k, look):
                     unknown_since = None
                     if stable is None or screens.distance(stable.thumb, look.thumb) > self.threshold(name):

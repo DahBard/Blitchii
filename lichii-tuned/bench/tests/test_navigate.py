@@ -231,3 +231,34 @@ class ScreensTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LookAlikeScreensTest(Base):
+    """The owner's first check (2026-11-15): a press that moved to a screen with a thumbnail like
+    the last one was taken for no change, and the bench pressed again into the load."""
+
+    def test_menus_that_look_alike_are_told_apart_by_draws(self):
+        original = fakes.screen_png
+        same = {"menu4": "menu3", "loading": "menu3"}
+        fakes.screen_png = lambda name, *a, **k: original(same.get(name, name), *a, **k)
+        try:
+            refs = fakes.refs_for_flow()
+            for step, name in fakes.FLOW.items():
+                refs[step]["draws"] = fakes.SCREENS[name][0]  # check records each screen's draws
+            record = self.nav(refs=refs).run()
+        finally:
+            fakes.screen_png = original
+        self.assertEqual(self.world.screen, "fountain")
+        self.assertEqual([p[1] for p in self.world.presses], ["title", "menu2", "menu3", "menu4"])
+        self.assertEqual(record["arrival"]["step"], "arrival")
+
+    def test_a_save_that_loads_with_fewer_presses_goes_straight_to_arrival(self):
+        saved = fakes.SCREENS["menu3"]
+        fakes.SCREENS["menu3"] = (saved[0], saved[1], "loading", saved[3])
+        try:
+            record = self.nav().run()
+        finally:
+            fakes.SCREENS["menu3"] = saved
+        self.assertEqual(self.world.screen, "fountain")
+        self.assertEqual([p[1] for p in self.world.presses], ["title", "menu2", "menu3"])
+        self.assertEqual(record["arrival"]["step"], "arrival")
