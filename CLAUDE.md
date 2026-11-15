@@ -146,6 +146,13 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
 - 2026-11-15 (owner): "Make the writeups for me, credit Frizti for credit in my testing methods":
   a public write-up of the build and an AGENTS.md of our method in lichii-tuned/community/, for
   the owner to share with the community.
+- 2026-11-15 (owner), testing: "devise a way to automatically do ab testing with scripts/macros. If
+  there is some program I can launch on my system that allows claude to tap in and play the game
+  in limited ways and extract log files, this would be ideal", and "also make a plan to make
+  testing quicker and more efficient, such as the way fritchii does it". The owner authorises
+  automated runs he starts (the agent rule against starting or stopping his emulator stays for
+  everything else). The plan builds on upstream's debug server (input, input_sequence,
+  read_memory, frame_times) and Fritchii's live switches; Remote Control isn't set up yet.
 - Scheduled tasks ("Resume Lichii work") resumed this session after usage cut-offs from
   2026-11-12 to 2026-11-15. 2026-11-15 (owner): "Stop all reminders to check for usage renewals":
   none is active, and none is to be created again.
