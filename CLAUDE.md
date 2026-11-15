@@ -153,6 +153,10 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   automated runs he starts (the agent rule against starting or stopping his emulator stays for
   everything else). The plan builds on upstream's debug server (input, input_sequence,
   read_memory, frame_times) and Fritchii's live switches; Remote Control isn't set up yet.
+  Owner's answers (2026-11-15): the GPU clock hold is fixed; Python 3.13 is installed; Player 1 is a
+  Pro Controller on "xbox 360 controller 0"; A x4 from the title reaches Link at the save (don't
+  move him: autosave checkpoints); Lichii always asks "Are you sure" on quit; default hotkeys. He
+  shared folders in Claude Code, but list_computer_folders still shows none to this session.
 - Scheduled tasks ("Resume Lichii work") resumed this session after usage cut-offs from
   2026-11-12 to 2026-11-15. 2026-11-15 (owner): "Stop all reminders to check for usage renewals":
   none is active, and none is to be created again.
