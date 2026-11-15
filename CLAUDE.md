@@ -131,6 +131,11 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   GPU's fast/slow state is the driver's on-demand clock, not GPU-Z, the tune, the Claude app or
   Adrenalin's game profile. "Force maximum clocks" (our TurboMode) holds 3.2 GHz: 57.1 fps at the
   fountain against 54.2-54.7 in the slower state, for ~60 W; on for play and tests from now on.
+- 2026-11-14 (late), after the r64 sitting: "analyze all recent commits to Lichii for anything
+  that might benefit us. We shouldn't consider anything that will cost frame times or will be
+  rewritten when we replace our pipeline with Fritchii's, any other optimizations that are
+  likely to improve performance are good." Merge 5 for r65: upstream nx2 58e418db65 without
+  nine commits, plus r64's proven items as defaults (HANDOFF).
 - A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
   asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
   usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;

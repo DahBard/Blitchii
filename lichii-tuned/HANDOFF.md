@@ -2753,6 +2753,80 @@ Own changes:
      load, and TurboMode removes them for ~60 W; it also takes the GPU state out of A/B noise.
      Kept on for play and for tests from now on; for r65, make it the tuned build's recommended
      setting so Apply Recommended Settings keeps it.
+   - r64 sitting (owner, 2026-11-14 evening; Force maximum clocks on in every run, GPU-Z a flat
+     3195 MHz; three analysts, scratchpad r64-sitting/{fountain,route,diagnostics}.json):
+     - Fountain, N = perf-trace-noprofile against G = ab-41 (N G G N). The G runs and N2 had no
+       60 s settle, so compare windows matched to arrival (2737-2750 draws a frame): N
+       55.67/54.53 fps, G 55.46/55.92; GPU busy N 13.13/13.60, G 13.14/13.33 ms; back work N
+       14.15/14.24, G 14.03/14.17 ms a frame (the back did not get slower). FSR slim c (10-bit
+       output): the FSR stages 2.93 -> 2.67 ms a frame (-0.26 ms, 4-14x the spread), health
+       check passed: make default. b and d never engaged (Ocarina's colour view is swizzled; b's
+       refusal isn't logged): drop. Native float atomics: s6:45384f519a8eacd3 210 us -> under
+       the slowest-8 cutoff (~155 us), but s6:1e1964184a291f00 -> 231 us and
+       s6:b712c7d7ddd57755 ~125 -> 198 us (22 calls), net 0 to +0.14 ms; the lazy TFB barrier
+       is under the noise. Both keep testing, one at a time; the slowest-8 list hides a kernel
+       once it gets fast (r65 adds a watch list). The traces cost ~1 fps (frame-times.bat 56.1).
+     - Route A-B-C-B-A, S = trace-smooth against M = ab-42 (S M M S): frames over 33.4 ms
+       207/224 -> 175/141, their excess 26.67 -> 18.84 s (-29%; -44% without the slow,
+       wait-bound spot 3-25 s after the A revisit, which every run crosses). Transitions over
+       250 ms -45%, load tails -52%; per load L1 -8%, L2 -41%, L3 -73%, L4 -40%, L5 -77%; L1's
+       FSR frame 778/795 -> 566/536 ms. Driver allocation time in load windows 1,773/1,809 ->
+       939/985 ms (16 MiB blocks -83%, host staging buffers -78%). VRAM max 12.7/13.1 GB of 16,
+       texture cache max 9,593 MiB (critical ~9,597), no out-of-memory; steady back work per
+       draw +0 to +2.4% (inside the 1-4% S1-S2 spread). FSR early context, memory reserve
+       (4096 MiB) and staging ring (256 MiB): make default. One >128 MiB upload per load still
+       misses the ring (20-58 ms a load). #1571: keep testing, on its own. Left: ~1,450
+       dedicated allocations a session (~700-730 ms device-local).
+     - Diagnostics: the ~10.03 s spike is in frame-times.bat (no traces) too: +25.7 ms at the
+       fountain, 78-100% of its frames over 33.4 ms and its 0.1% low (22.2 fps with it, 34.8
+       without). It behaves like ~20-25 ms of work on the frame's path every 10 s, not locked to
+       any of our lines: the game's, or something always on. Nothing new in the warnings and
+       errors; 9 of 9 exits clean. The heap calls' time is inside Windows (MapViewOfFile3 and
+       UnmapViewOfFile2 block in the kernel at loads, 98-100% on the game's thread t98); a
+       view-reuse cache would catch 0.6-0.7% of regions: dropped, next a WPR capture of the 10 s
+       after the last load. The 'Wait for idle per second' counter counts only with the GPU
+       profile (r65 gives it a switch). Every r64 route run has about twice r63's excess after
+       the last load (B -> A: uniform buffers 366-632 ms, compute sync storage 226-604 ms, fence
+       148-222 ms in its slow frames); new in r64 and common to all four runs: Force maximum
+       clocks (TurboMode's busy loop on its own device), the GPU clock probe and the FSR stage
+       timestamps. One trace-smooth run with Force maximum clocks off tells them apart.
+   - Upstream review for r65 (owner, 2026-11-14: "analyze all recent commits to Lichii for
+     anything that might benefit us. We shouldn't consider anything that will cost frame times
+     or will be rewritten when we replace our pipeline with Fritchii's"): the 136 commits
+     87d84d513c..58e418db65, 14 workflows with a reviewer and a skeptic for each ~5 commits
+     (scratchpad up136/combined.json; 17 CI, docs, tools and other-platform commits skipped).
+     - Take (24): the five Ocarina FPS Unlock fixes (#1660 the sound manager at 60 Hz, #1663 four
+       step-driven counters at real speed, #1679 moving platforms above 100 fps and Gohma's
+       steering, #1743 movie cutscene frames by the step, #1745 Scarecrow's Song lengths; with
+       our 1-frame step the song's recording broke at any frame rate); #1659 Ocarina's camera
+       from the guest cb3 binding (a frame without a match drops to the game's upscale and resets
+       FSR's history; not seen in our logs yet, upstream's case is the Water Temple); #1181 SHF
+       high registers; #1698 the memory model operands of the cooperative-matrix AA network
+       (a latent shared-memory race); #1733 hardware waits before one-shot core timing events;
+       #1700 syncpoint actions outside the guard; #1218 GPU memory listeners outside their
+       locks; #1783 GetSpan by pages; #1568; #1766 (no null view for a render target without
+       memory, an amdvlk64.dll crash); #823's freed bytes at their VMA size (its integrated-GPU
+       raise gated off on discrete cards); #1751 and #1265 (dynarmic); #1771 the log flushed
+       every second; #1709/#1710 stuck-stop exit and atomic config saves; #1374 screenshots;
+       #1647 the bug-report bundle; #1417 closing during the shader load; #1658; #1401.
+     - Needs a test (5): #1406/#1407 the pipeline binary store on AMD's driver (behind
+       EDEN_NX2_AMD_PIPELINE_BINARIES=1; it could keep compiled pipelines across builds, which
+       start with a cold AMD cache); #1681 the global memory routing helpers' single return (a
+       translator change, in by default: check the far forest in Hyrule Field and Kakariko and
+       the time of e78efceda31f97a8); #1672 FSR 4's input clamped to [0, 1] (in: watch small
+       bright effects); #1731 the texture collector's filtered walk (out: uncapped it costs the
+       back tens to ~150 us a frame at the fountain; a capped variant may come back behind a
+       switch).
+     - Left out (9, reverted on the upstream side): #1655 the GPU trace recorder and #1702 (a
+       call into video_core on every trapped guest store); #1723 per-source-line GPU timing (a
+       check per recorded command, and markers whenever the frame trace is on); #1137 (a check
+       before every native dispatch on the back, no gain on v131072); #1736 (replaces our #805
+       list-page shortcut with page copies and flushes); #1296 (native draws without depth would
+       wait out whole pipeline builds); #1641 (the unsplit thread only, Fritchii's area); #1744
+       (upstream's jitter, which we don't have); #1731.
+     - Already in (8): #1486's revert (upstream's equals ours), #1180, #995 (our #969), #1155
+       (we dropped #1036's flush), #1105, #1005, #1685, #1204. The other 74 change nothing for
+       us (other drivers, other games, the frontend) and come with the merge.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
