@@ -138,16 +138,13 @@ struct MemoryRecord {
 };
 
 /// Followed by u64 GPFIFO entries[entry_count], u32 prefetch words[prefetch_count], u32
-/// submitted_offsets[offset_count], u32 submitted words[word_count] and u32
-/// deferred_entries[deferred_count] (entries whose words weren't copied at submit).
+/// submitted_offsets[offset_count] and u32 submitted words[word_count].
 struct SubmitRecord {
     s32 channel;
     u32 entry_count;
     u32 prefetch_count;
     u32 offset_count;
     u64 word_count;
-    u32 deferred_count;
-    u32 padding{};
 };
 
 struct PresentLayer {
