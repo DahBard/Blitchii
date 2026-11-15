@@ -3176,6 +3176,10 @@ Own changes:
      - Checks: MinGW syntax check of every changed file (vk_pipeline_cache.cpp: the known -Wshadow
        only), the debug server and environment tests under ASan/UBSan in a Linux harness, the
        patch applied to r22-up-5 equals tuned4's tree (370 files).
+     - CI (tuned 2b9784cbba): build run #7 passed in 16 min (artifacts lichii-tuned-r67-pgo-lto and
+       its symbols, kept 3 days); unit tests run #8: 1,528 test cases, 1,525 passed and 3 skipped
+       (71,366,152 assertions), the clock trace passed, and the stack overflow check reported all
+       four modes (eden_crash.dmp 16.8 MB each).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
