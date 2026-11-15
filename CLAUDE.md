@@ -157,6 +157,12 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   Pro Controller on "xbox 360 controller 0"; A x4 from the title reaches Link at the save (don't
   move him: autosave checkpoints); Lichii always asks "Are you sure" on quit; default hotkeys. He
   shared folders in Claude Code, but list_computer_folders still shows none to this session.
+  Remote Control lists his computer's two folders but doesn't offer them to cloud sessions
+  ("not_available"), so the bench runs on his PC. 2026-11-15 (owner): autopilot wanted, "as smoothly
+  and as hands off as possible", at all hours, with our recommended safety rules (own test save
+  and build folders only, stop on owner input and resume when idle, F3 aborts, never delete old
+  builds, builds only from this repository's CI). GitHub CLI and Git are installed and signed in
+  on his PC (account DahBard, scopes repo, workflow, gist, read:org).
 - Scheduled tasks ("Resume Lichii work") resumed this session after usage cut-offs from
   2026-11-12 to 2026-11-15. 2026-11-15 (owner): "Stop all reminders to check for usage renewals":
   none is active, and none is to be created again.
