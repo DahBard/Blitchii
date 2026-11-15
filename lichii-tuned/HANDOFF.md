@@ -2961,6 +2961,92 @@ Own changes:
        fountain A/B (perf-trace-noprofile against it with LICHII_UPSTREAM_GLOBAL_ROUTING=1) shows
        r64's form saving GPU time; delete precache-jobs.poison before r67's first launch so the 8
        skipped builds are tried again with the bigger stacks.
+   - r66 sitting 1 (owner, 2026-11-15; r66 bfe83e2de4, Force maximum clocks on, 120 fps lock,
+     frame generation and HDR off, the Market fountain; stays 120.6-132.3 s from arrival, the
+     60 s + 100 s counted from the first frame, so windows are matched to arrival; N1 A43 A43 N2
+     A44 A44 N3, then spike-hunt: logs 36c131bc, 6e9e0cdc, d5ced9da, 1a19dd5b, c471eeec,
+     d7724ef8, 1725639d, cc9a5cad; two analysts, a spike analyst and a judge, scratchpad
+     r66-sitting1/{a,b,spike,judge}/; decision rules fixed before the analysis):
+     - The GPU sat at ~1.8 GHz all sitting: probe 1,749-1,811 MHz (window medians 1,767-1,797)
+       from the title screen on, against 3,125/3,142 at r64's fountain, with force_max_clock
+       true and driver 2.0.416 as in r64. Every watched kernel is slower by up to the clock
+       ratio: 45384f519a8eacd3 357-366 us against 210 (the slow-state band), 75d4369f3b1f5868
+       350-363 against 236-239. GPU busy (15.1-15.4 ms) now exceeds the back's work (14.5-14.7),
+       so both GPU A/Bs ran GPU-bound, a state the owner doesn't play in. The CPU was slower
+       too: back thread 4.20-4.22 GHz at 50.7-51.7 W against 4.31 at 54.5-55.4 W, best
+       performance in every clock window. A flat ~1.8 GHz is about what the probe would read
+       under the Radeon Developer Panel's Stable 1,820 MHz (the probe reads ~2% under GPU-Z).
+       Owner check before the next GPU A/B: GPU-Z's clock in play, the Panel or its service,
+       an Adrenalin tuning profile.
+     - Windows [arrival+2, +117.6 s] (r64's arrival rule, 2,748-2,752 draws a frame). GPU busy
+       = median/mean of the untimed gpu_frame lines; back = whole clock lines inside (both
+       r64's measures); ms a frame; watched = total (45384/1e19/b712/75d4):
+         run    window (s)   draws fps    1%low busy (med/mean) back    watched                     probe
+         N1     80.0-195.6   2748  50.55  26.3  15.236/15.273   14.461  1.097 (.365/.176/.195/.361) 1797
+         A43-1  77.0-192.6   2751  50.77  26.5  15.072/15.038   14.604  0.914 (.136/.230/.189/.359) 1767
+         A43-2  77.0-192.6   2752  50.22  27.1  15.136/15.047   14.650  0.918 (.136/.230/.191/.360) 1770
+         N2     69.0-184.6   2752  51.01  27.1  15.095/15.031   14.539  1.089 (.360/.176/.196/.358) 1796
+         A44-1  75.0-190.6   2751  50.48  26.9  15.338/15.273   14.722  1.082 (.361/.175/.193/.353) 1767
+         A44-2  70.0-185.6   2750  50.76  26.1  15.190/15.117   14.685  1.086 (.365/.175/.191/.355) 1774
+         N3     103.0-218.6  2749  50.17  27.1  15.358/15.327   14.663  1.086 (.366/.175/.192/.353) 1769
+         spike-hunt stay 71.0-189.8: 50.64 fps, 1% low 27.3 (no GPU, draw or clock lines).
+       - ab-43 native float atomics: DROP.
+         - GPU busy -0.062 ms: under the 0.10 bar and the 0.141 N1-N2 spread, with A43-2 above
+           N2 (per-run means -0.109 against a 0.242 spread).
+         - Watched kernels -0.177 ms (45384 363 -> 136 us, 1e19 176 -> 230).
+         - Back work +0.127 ms a frame, over the limit, at the same 4.20-4.22 GHz in all four.
+           The figure sits at the limit: other fits of the 10 s lines give +0.09 to +0.13, and
+           the N runs span 14.46-14.66.
+         - Analyst b's +0.086 (INCONCLUSIVE) prorated by time the clock line that holds the
+           arrival load (338-682 ms/s against 714-756 steady), 0.03-0.14 ms low per run. With
+           r64's arrival, the same method gives +0.130.
+         - The GPU gain is a slow-clock effect anyway: native 1e19 and b712 take 230 and
+           ~190 us at 1.8 and 3.2 GHz alike, while the CAS loops speed up with the clock. At
+           3.2 GHz native atomics lose (r64: 0 to +0.14 ms).
+       - ab-44 lazy TFB barrier: DROP. GPU busy +0.037 ms (means +0.016), back +0.102, kernels
+         -0.004, FSR stages unchanged. The 0.05-0.1 ms it was meant to save shows in neither
+         sitting.
+       - No correctness problem in either: the same 339 warning and error lines in all eight
+         logs, the FSR output check passed, eight clean exits (4.6-5.4 s after the quit).
+     - r66 against r64 at r64's offsets [+18, +113] (2,743-2,747 against 2,743/2,750 draws):
+       - fps 50.65/51.26/50.32 against 55.67/54.53 (-7.9%); GPU busy 15.21/15.06/15.34 against
+         13.13/13.60 ms (+13.7%).
+       - Back 14.39/14.43/14.55 against 14.15/14.24 (+1.8%; -0.5% in cycles, so unchanged).
+         Front +6.1% (+3.4% in cycles); guest cores 55.3 against 53.9 ms.
+       - FSR stages 3.11-3.16 against r64's 10-bit arm 2.64-2.71 ms.
+       - 1% low 27.0-27.8 against 33.6/34.8; frames over 33.4 ms 20-22 against 11/8.
+       - The GPU and fps losses are the clock. Merge 5 and r65's defaults didn't change the
+         back thread, and the arrival load is ~0.2 s shorter (load frames 886-943 + 603-664 ms
+         against 965-1,078 + 755-903). A GPU comparison with r64 needs an N run at 3.2 GHz.
+     - The periodic hitch now comes every 5.026-5.030 s, in every cycle (r62-r64: 10.02-10.03
+       s), at the same size: one frame of 44.7-46.7 ms (+25-27 ms), ~77-96% of the frames over
+       33.4 ms. Without it the 1% low would be 32-35 fps, not 26-28.
+       - spike-hunt: in 20 of 24 spike windows the main thread t88 (prio 44, core 0) runs
+         23.4-31.2 ms without a break (5.8 otherwise, never over 15.0), with +0.4-0.5 ms of
+         game code a frame and no extra SVCs. Three times job worker t158 runs 28-31 ms, ~30
+         ms of it a read-back of GPU-written memory; once t156 runs 56 ms (the 63.7 ms frame).
+         IPC, HostTiming and JIT compiles don't change.
+       - The 5 s grid is locked to our FSR context. Its first tick comes ~5.03 s after 'AMD
+         FSR: output and context made ... (prepared early)'. On the title screen, frames on that
+         grid take 21.8-28.5 ms (title frames ~2.2 ms) in 4/4-8/8 cycles, against 0-1 at
+         half-period offsets. r64's early-context ab-42 (slim off) has no title tick, and r62's
+         one FSR-off run had no periodic spike.
+       - Two candidates: our FSR path (the early context with slim c, or AMD's runtime), or the
+         game's own 5 s job phase-set by its first frame. Merge 5's #1660/#1663 don't explain
+         the lock. CNTPCT is inlined, so the stats can't tell t88's 28 ms spin from work.
+     - Side finding: perf-trace-noprofile adds a +7-10 ms frame every 4.157 s (24-27 of ~30
+       cycles), absent from spike-hunt: the clock trace, the heap trace or the GPU clock probe.
+     - Next:
+       - the GPU clock check;
+       - a title-screen test for the hitch (boot, ~40 s at the title, quit, frame times only):
+         default, LICHII_FSR_EARLY_CONTEXT=0, LICHII_FSR_SLIM=0, EDEN_NX2_DLSS_REPLACEMENT=native
+         and EDEN_NX2_FSR_VERSION=3 (FSR 3.1; there is no LICHII_FSR4 switch), counting 20-30 ms
+         frames on the 5.027 s grid from the FSR line;
+       - native atomics and the lazy TFB barrier (switches and the ab-43/ab-44 launchers) leave
+         r67;
+       - one N run at 3.2 GHz;
+       - the 4.157 s trace, found by turning the probe, then the heap trace, then the clock
+         trace off in turn.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
