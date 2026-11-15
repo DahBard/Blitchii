@@ -1,0 +1,65 @@
+{
+ "name": "r67 fountain A/A",
+ "note": "W, then 8 x N labelled N-a and N-b in ABBA BAAB order. Both arms are the same launcher with nothing changed: the rules must find no effect. It shows that the runner works and how noisy a sitting is.",
+ "kind": "fountain",
+ "build": "r67",
+ "arms": {
+  "N-a": {
+   "base": "perf-trace-noprofile.bat",
+   "env": {}
+  },
+  "N-b": {
+   "base": "perf-trace-noprofile.bat",
+   "env": {}
+  }
+ },
+ "warmup": [
+  "N-a"
+ ],
+ "design": {
+  "pair": [
+   "N-a",
+   "N-b"
+  ],
+  "blocks": 2
+ },
+ "settle_s": 60,
+ "measure_s": 100,
+ "cooldown_s": 60,
+ "warmup_measure_s": 30,
+ "gates": {
+  "probe_mhz": "sitting",
+  "probe_band_pct": 3,
+  "cpu_band_pct": 1.5,
+  "draws": [
+   2600,
+   3200
+  ],
+  "settings": {
+   "force_max_clock": true
+  }
+ },
+ "rules": [
+  {
+   "item": "N-b",
+   "control": "N-a",
+   "metric": "gpu_busy_ms",
+   "better": "lower",
+   "min_effect": 0.1,
+   "guards": [
+    {
+     "metric": "back_work_ms",
+     "better": "lower",
+     "max_worse": 0.1
+    }
+   ]
+  },
+  {
+   "item": "N-b",
+   "control": "N-a",
+   "metric": "frame_ms",
+   "better": "lower",
+   "min_effect": 0.1
+  }
+ ]
+}
