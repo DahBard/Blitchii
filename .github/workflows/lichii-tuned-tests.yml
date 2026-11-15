@@ -145,3 +145,36 @@ jobs:
           export PATH="/ucrt64/bin:$PATH"
           cd build/release/bin
           EDEN_NX2_CLOCK_TRACE=1 ./tests.exe "[clock_trace]" --colour-mode none
+
+      # The stack overflow report (src/common/windows/crash_handler.cpp, r66) on a real Windows
+      # host, linked with lichii.exe's 16 MiB default stack. "guarded" runs as the shader job
+      # workers do and must leave the "Host crash" line and eden_crash.dmp; the other modes are
+      # threads without the 64 KiB guarantee and only warn.
+      - name: Check the stack overflow report
+        shell: msys2 {0}
+        run: |
+          set -uo pipefail
+          export PATH="/ucrt64/bin:$PATH"
+          mkdir -p build/crash-check
+          cd build/crash-check
+          clang++ -std=gnu++20 -O2 -DFMT_HEADER_ONLY -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 \
+            -I ../../src ../../lichii-tuned/tests/crash_overflow_check.cpp \
+            ../../src/common/windows/crash_handler.cpp -fuse-ld=lld -Wl,--stack,16777216 \
+            -o crash_overflow_check.exe || exit 1
+          failed=0
+          for mode in guarded overflow main chkstk; do
+            rm -f eden_crash.dmp
+            timeout 120 ./crash_overflow_check.exe "$mode" 2> "$mode.txt"
+            echo "== $mode: exit status $?"
+            cat "$mode.txt"
+            if grep -q 'Host crash: unhandled exception 0xc00000fd .*stack overflow reported by thread' "$mode.txt" &&
+               grep -q 'minidump of process .* written' "$mode.txt" && [ -s eden_crash.dmp ]; then
+              echo "$mode: reported, eden_crash.dmp $(stat -c %s eden_crash.dmp) bytes"
+            elif [ "$mode" = guarded ]; then
+              echo "::error::A stack overflow on a guarded thread was not reported"
+              failed=1
+            else
+              echo "::warning::A stack overflow ($mode) was not reported"
+            fi
+          done
+          exit $failed

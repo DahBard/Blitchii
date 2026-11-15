@@ -1,5 +1,5 @@
 diff --git a/AGENTS.md b/AGENTS.md
-index e2085b343b..d8eebaabe3 100644
+index e2085b343b..abc21befb4 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
 @@ -98,7 +98,13 @@ Use these before guessing. All are off unless the variable is set; pass them as
@@ -17,7 +17,7 @@ index e2085b343b..d8eebaabe3 100644
  | Guest cores' idle CPU or wake-up latency (time in PhysicalCore::Idle) | `EDEN_NX2_IDLE_STATS=1` | One `Guest core N idle` line per core every 10 s: idle periods, how many the poll caught, the average time polled, how many blocked and how long those took to wake after the interrupt (p50/p99 µs), and the current poll. |
  | Present waits on a fence (is the frame's fence submitted when the game presents?) | `EDEN_NX2_PRESENT_FENCE_TRACE=1` | One `nx2:vi2 present fences, last 600 presents` line: presents by their fence at entry (reached, submitted to nvdrv but not reached, beyond everything submitted, not allocated in nvdrv, no fence), each with those that had a suspended channel, auto waits that gave up and the mean/max ms until the fence was reached; how long after the present returned it was reached; the last fence with its guest value and nvdrv max. |
  | Back thread idle (what the front does while the back waits) | `EDEN_NX2_BACK_IDLE_TRACE=1` | One `Back idle in 10 s` line: the back's idle ms/s and ms/frame split by the front's state (parse, drain, list writers, semaphore, list copy, queue empty, unknown when the state ring wrapped), and idle periods by length. |
-@@ -114,6 +120,8 @@ Use these before guessing. All are off unless the variable is set; pass them as
+@@ -114,12 +120,14 @@ Use these before guessing. All are off unless the variable is set; pass them as
  | GPU back skipped a lock or gather it needed (inline writes, collected CPU writes, buffer usage resets) | `EDEN_NX2_BACKX_VERIFY=1` | Each skip also runs the locked check it replaces and then does the locked work. A `BackX verify mismatch` error (first 64) names the case: an inline write into GPU-written buffer data, a collected CPU write no manager showed, or a usage word set outside the tracked extent. Every 10 s a `BackX gather checks` line: skipped gathers, those that found writes a manager collected after the check (a race the next call covers) and those that found writes with nothing collected since (must stay 0). |
  | Upscaler and DLSS contracts | `EDEN_NX2_DLSS_CONTRACT_TRACE=1` | Inputs and outputs of replaced upscaler networks. |
  | Service calls | `EDEN_NX2_IPC_TRACE=1` | IPC command trace. |
@@ -26,6 +26,13 @@ index e2085b343b..d8eebaabe3 100644
  | Read stalls (loading hitches, NUP vs other containers) | `EDEN_NX2_FS_READ_TRACE=1` | About once a second while the guest reads, one `Guest storage reads` line (`IStorage`, the RomFS) and one `Guest file reads` line (`IFile`): count, MiB, p50/p99/max latency and reads over 1 ms and 16 ms, plus totals and read time since boot. Times cover the backend read (NUP decompression included), not the Switch 1 SD-card throttle. |
  | Unmapped device reads (`Unmapped Device ReadBlock`) | `EDEN_NX2_READBLOCK_TRACE=1` | Every read of unmapped device memory, one line per read with its first unmapped address, unmapped byte count and caller (`file:line`). Without it only the first 16 are logged. |
  | Device loss (`Device loss occurred!`) | Always on | The `Device fault` lines after it: what VK_EXT_device_fault reports (fault addresses and their type, vendor fault codes). `not supported by the driver` means the driver has no such data. |
+ | Out of memory (`Image ... failed: -2`, `No memory for the ... image`) | Always on | The `Memory trace` lines before the first failed image: system commit against its limit, DXGI local and non-local use, and each heap's driver usage and budget. On Windows, commit at its limit means RAM plus the page file ran out, not the card; other hosts report no commit limit and log `0 of 0`, which says nothing. The `Host memory:` line under `Texture cache thresholds` says whether host commit or the device budget bounds the cache. |
+ | Buffer cache growth (`Memory trace: buffer cache` climbing, the largest buffers at ever higher device addresses, GPU time far over the timed work) | `EDEN_NX2_BUFFER_TRACE=1` | Every 10 s, `Buffer trace: N MiB in buffers; in 10 s` buffers created, buffers joined into them (MiB copied), stream leaps and buffers collected, plus `Buffer trace: SMMU space in 10 s` (Switch 2 device ranges allocated and freed). Each buffer of 64 MiB or more gets a `Buffer trace: created` line with its range, the range asked for, the `buffer_cache.h` line that asked, the buffers it joined and whether it took a stream leap (first 256). GBs copied per 10 s mean a buffer is growing by joining the next range each frame. |
+-| Driver crash, stall or slow pipeline builds | `EDEN_NX2_PIPELINE_BUILD_TRACE=<file>` | A flushed `BEGIN`/`END` line per driver pipeline build with the pipeline and stage hashes; `END` adds the wall time (`ms=`). The last `BEGIN` without an `END` names the shaders the driver crashed or is stuck on. Times include waiting on other builds, so compare runs from the same cleared driver cache rather than single builds. |
++| Driver crash, stall or slow pipeline builds | `EDEN_NX2_PIPELINE_BUILD_TRACE=<file>` | A flushed `BEGIN`/`END` line per driver pipeline build with the pipeline and stage hashes, and a `MEM` line every second with the process's commit and working set and the system's commit and limit (MiB, 0 where the host has none). `END` adds the wall time (`ms=`), and every line has the seconds since the trace opened (`t=`). The last `BEGIN` without an `END` names the shaders the driver crashed or is stuck on; the `MEM` lines after it go on through a hang and climb in a memory blowup. `exit()` ends the trace with an `EXIT` line and its `thread=` (a builder's means the driver or a library called it); a trace that just stops ended without `exit()`: a crash, a fail-fast, `ExitProcess` or `TerminateProcess`. Times include waiting on other builds, so compare runs from the same cleared driver cache rather than single builds. |
+ | Host crash (log just stops) | Always on (Windows): a `Common <Critical> Host crash:` line, then `eden_crash.dmp` next to the log. Without that line, the WER minidump in `%LOCALAPPDATA%\CrashDumps\lichii.exe.<pid>.dmp` if LocalDumps is set up | The line has the exception code, faulting thread (id and name) and the stack as module+offset; `abort()` covers `std::terminate` and fatal asserts, and a CRT invalid-parameter failure has its own line. Symbolize with `llvm-symbolizer --obj=lichii.exe --inlines --relative-address <offset>` next to the build's `lichii.pdb`, and read the dump with the `minidump` Python package. Fail-fast exits (heap corruption, stack cookie) and kills skip it. The file log flushes lines below Error once a second, so a hang, kill or fail-fast loses at most the last second of them. |
+ | Exception in JIT code (`in JIT code at` ... `is not a fastmem access`; older builds log `FastmemCallback: unreachable` and abort) | Always on | Windows: `Exception <code> in JIT code at rip <rip> (code block +<offset>) ... info <access> <address>; code from rip-16: <bytes>`, the access type being 0 read, 1 write, 8 execute, and `\|` marking the byte at rip; the `Host crash: unhandled exception` line and an `eden_crash.dmp` with the real exception follow. Linux: `SIGSEGV` (or `SIGBUS`) `in JIT code at pc <pc> (code block +<offset>) ... fault address <address>`, with no access type. macOS prints `EXC_BAD_ACCESS in JIT code at rip` (or `pc`) to stderr, with no offset or address. For an older build's abort dump, `python3 -I tools/nx2/jit_fault_from_dump.py eden_crash.dmp` recovers the exception record and registers from the faulting thread's stack (`--threads`, `--thread <id>`, `--jit-base <hex>`). |
+ 
 diff --git a/CMakeModules/GenerateSCMRev.cmake b/CMakeModules/GenerateSCMRev.cmake
 index 43097e1b9f..885a4ddd98 100644
 --- a/CMakeModules/GenerateSCMRev.cmake
@@ -71,10 +78,10 @@ index 256f09a736..ae99918678 100644
              set(sha256 b61fecfad224d2f0b6a040c23663e5f6915eb500be9fc36016e3ffcb0aa66e52)
 diff --git a/dist/lichii-tuned/README-tuned.txt b/dist/lichii-tuned/README-tuned.txt
 new file mode 100644
-index 0000000000..6aae6e0085
+index 0000000000..ad3d8b7a26
 --- /dev/null
 +++ b/dist/lichii-tuned/README-tuned.txt
-@@ -0,0 +1,647 @@
+@@ -0,0 +1,694 @@
 +Lichii tuned for Intel Core Ultra 200H (Arrow Lake-H) + AMD Radeon RX 9070 XT
 +==============================================================================
 +
@@ -601,6 +608,33 @@ index 0000000000..6aae6e0085
 +     ab-46 and spike-hunt (below).
 +   - Like every new build, the first launch builds the shaders and runs the preparation (about
 +     15 minutes).
++ * r66: r65 disappeared during the loading screen's build of Ocarina's cached pipelines, three
++   times at the same point of that build, with no "Host crash" line and no eden_crash.dmp: AMD's
++   driver was compiling one of Ocarina's task/mesh pipelines. Either AMD's compiler fails on
++   what merge 5 changed in its shaders, or it runs out of stack on a 1 MiB thread. r66:
++   - AMD's driver gets r64's global memory helpers again: upstream's new form of them (#1681,
++     #1757) is the one merge 5 change to the shaders AMD's driver gets.
++     LICHII_UPSTREAM_GLOBAL_ROUTING=1 brings upstream's form back (ab-47).
++   - Every thread started without a stack size of its own, among them the workers on which
++     AMD's driver compiles pipelines, has a 16 MiB stack instead of 1 MiB.
++   - A stack overflow is reported now: a thread with a stack of its own writes the "Host crash"
++     line, with the overflowing thread's innermost and outermost frames, and eden_crash.dmp.
++     r65's handler ran out of stack itself, so Lichii vanished without either. If Lichii
++     freezes after such a line, writing the dump got stuck: end Lichii in Task Manager and send
++     the log.
++   - CRT invalid-parameter errors behave as in r64 again: the C runtime call fails and Lichii
++     carries on. r65's crash handler (upstream #1728) ended Lichii there, as MSVC builds (the
++     official ones) do; it now does that only in MSVC builds.
++   - Launchers: crash-trace.bat writes every driver pipeline build to pipeline-builds.txt, with
++     the time of each line, Lichii's memory every second and how Lichii ended (below);
++     ab-47-upstream-routing.bat (upstream's helpers with the new stacks) tells the two causes
++     apart.
++   - The first launch: like every new build, the launch that builds the shaders also runs the
++     preparation (about 15 minutes). If r65's last launch disappeared, r66's first launch skips
++     that build and the preparation (its log says "the last boot ended while building cached
++     pipelines; building none at boot this time"), unless lichii-cache.v2.bin.booting is
++     deleted from the shader folder first; the launch after builds them. Only a launch that
++     builds them shows whether r66 fixed the crash: use crash-trace.bat for it.
 + * Recommended speed settings, applied once on first start (change them freely afterwards):
 +   GPU accuracy Low, asynchronous shaders on, reactive flushing off, asynchronous presentation
 +   on, GPU video decoding, shader precache Always, Switch 2 draws with unbuilt pipelines
@@ -651,6 +685,26 @@ index 0000000000..6aae6e0085
 +                              use it for a new build's first launch and the one after, then for
 +                              the next build's first launch, and compare boot and preparation
 +                              times with the default launches. Untested on RDNA 4
++ ab-47-upstream-routing.bat   upstream's global memory helpers on AMD's driver, as in r65
++                              (LICHII_UPSTREAM_GLOBAL_ROUTING=1, upstream #1681/#1757), with
++                              crash-trace.bat's pipeline-builds.txt. Only after a launch that got
++                              through the loading screen's build (a launch right after one that
++                              disappeared skips that build): if it gets through that build and
++                              plays, r65's crash was a stack overflow, which r66's 16 MiB stacks
++                              fix; if Lichii disappears again, AMD's driver can't build those
++                              shaders even with 16 MiB stacks. Send the log and
++                              pipeline-builds.txt either way
++ crash-trace.bat              the default settings with every driver pipeline build written to
++                              pipeline-builds.txt next to lichii.exe
++                              (EDEN_NX2_PIPELINE_BUILD_TRACE): BEGIN and END lines (END with the
++                              build's time, ms=), the seconds since launch on every line (t=),
++                              Lichii's memory every second (MEM lines), an EXIT line when Lichii
++                              closes normally, and an EXITCODE line from the launcher when Lichii
++                              ends: -1073741571 is a stack overflow, -1073740791 a fail-fast,
++                              -1073741819 an access violation. If Lichii disappears, the BEGIN
++                              lines without an END name the pipelines the driver was building.
++                              The launcher's window stays open while Lichii runs. Each launch
++                              adds to the file, so delete it before the launch you want to send
 + spike-hunt.bat               the frame times, the emulated threads every second
 +                              (EDEN_NX2_GUEST_THREAD_STATS=1, EDEN_NX2_GUEST_THREAD_WINDOW_MS=1000),
 +                              service calls per second (EDEN_NX2_IPC_STATS=1) and core timing
@@ -826,6 +880,25 @@ index 0000000000..2831f47e1a
 +rem crashes, stop using it and send the log.
 +set LICHII_FRAME_TIMES=1&& set EDEN_NX2_STUTTER_TRACE=1&& set EDEN_NX2_AMD_PIPELINE_BINARIES=1
 +start "" "%~dp0lichii.exe" %*
+diff --git a/dist/lichii-tuned/ab-47-upstream-routing.bat b/dist/lichii-tuned/ab-47-upstream-routing.bat
+new file mode 100644
+index 0000000000..566f17dd1e
+--- /dev/null
++++ b/dist/lichii-tuned/ab-47-upstream-routing.bat
+@@ -0,0 +1,13 @@
++@echo off
++rem Upstream's global memory helpers on AMD's driver, as in r65 (LICHII_UPSTREAM_GLOBAL_ROUTING=1,
++rem upstream #1681/#1757), with crash-trace.bat's pipeline-builds.txt next to this file. With
++rem them, r65 disappeared in the loading screen's build of Ocarina's pipelines; r66 gives each
++rem thread a 16 MiB stack instead of 1 MiB. If this launch gets through that build and plays,
++rem r65's crash was a stack overflow; if Lichii disappears again, AMD's driver can't build those
++rem shaders even with 16 MiB stacks, and the BEGIN lines without an END in pipeline-builds.txt
++rem name them. Only after a launch that got through that build: a launch right after one that
++rem disappeared skips it. This window stays open while Lichii runs. Each launch adds to
++rem pipeline-builds.txt: delete it before the launch you want to send, then send it with the log.
++set LICHII_UPSTREAM_GLOBAL_ROUTING=1&& set "EDEN_NX2_PIPELINE_BUILD_TRACE=%~dp0pipeline-builds.txt"
++start "" /wait "%~dp0lichii.exe" %*
++>>"%~dp0pipeline-builds.txt" echo EXITCODE %ERRORLEVEL%
 diff --git a/dist/lichii-tuned/ab-6-official-texture-cache.bat b/dist/lichii-tuned/ab-6-official-texture-cache.bat
 new file mode 100644
 index 0000000000..e3f9207b7e
@@ -836,6 +909,25 @@ index 0000000000..e3f9207b7e
 +rem Texture cache collects from 5 GiB as in official Lichii (this build: 5/8 of the VRAM budget).
 +set EDEN_NX2_TC_CRITICAL_MIB=5120&& set EDEN_NX2_TC_EXPECTED_MIB=4352
 +start "" "%~dp0lichii.exe" %*
+diff --git a/dist/lichii-tuned/crash-trace.bat b/dist/lichii-tuned/crash-trace.bat
+new file mode 100644
+index 0000000000..276904d59e
+--- /dev/null
++++ b/dist/lichii-tuned/crash-trace.bat
+@@ -0,0 +1,13 @@
++@echo off
++rem The default settings with every driver pipeline build written to pipeline-builds.txt next
++rem to this file (EDEN_NX2_PIPELINE_BUILD_TRACE): a BEGIN line when a build starts and an END
++rem line with its time (ms=) when it ends, the seconds since launch on every line (t=), Lichii's
++rem memory every second (MEM lines) and an EXIT line when Lichii closes normally. When Lichii
++rem ends, this launcher adds an EXITCODE line: -1073741571 is a stack overflow, -1073740791 a
++rem fail-fast, -1073741819 an access violation. If Lichii disappears, the BEGIN lines without an
++rem END name the pipelines the driver was building. This window stays open while Lichii runs.
++rem Each launch adds to pipeline-builds.txt: delete it before the launch you want to send, then
++rem send it with the log.
++set "EDEN_NX2_PIPELINE_BUILD_TRACE=%~dp0pipeline-builds.txt"
++start "" /wait "%~dp0lichii.exe" %*
++>>"%~dp0pipeline-builds.txt" echo EXITCODE %ERRORLEVEL%
 diff --git a/dist/lichii-tuned/frame-times.bat b/dist/lichii-tuned/frame-times.bat
 new file mode 100644
 index 0000000000..c17fbe2c23
@@ -6645,10 +6737,24 @@ index 471a022823..9673995410 100644
  
  } // namespace Common
 diff --git a/src/common/windows/crash_handler.cpp b/src/common/windows/crash_handler.cpp
-index 36e160021a..2ade61c7e7 100644
+index 36e160021a..93093dbe2d 100644
 --- a/src/common/windows/crash_handler.cpp
 +++ b/src/common/windows/crash_handler.cpp
-@@ -20,6 +20,14 @@
+@@ -3,6 +3,7 @@
+ 
+ #include <algorithm>
+ #include <atomic>
++#include <cerrno>
+ #include <csignal>
+ #include <cstdint>
+ #include <cstdio>
+@@ -15,11 +16,20 @@
+ 
+ #include <dbghelp.h>
+ 
++#include "common/assert.h"
+ #include "common/logging.h"
+ #include "common/windows/crash_handler.h"
  
  #define LOG_CRASH(...) ::Common::Log::FmtCrashMessage(__FILE__, __LINE__, __func__, __VA_ARGS__)
  
@@ -6663,7 +6769,444 @@ index 36e160021a..2ade61c7e7 100644
  namespace Common::Windows {
  namespace {
  
-@@ -158,7 +166,7 @@ LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers) {
+@@ -28,6 +38,7 @@ using MiniDumpWriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, MINIDUMP_TYPE,
+                                           PMINIDUMP_USER_STREAM_INFORMATION,
+                                           PMINIDUMP_CALLBACK_INFORMATION);
+ using GetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PWSTR*);
++using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
+ 
+ // Everything the handler needs is resolved at install: loading a DLL from a crashed process can
+ // deadlock on the loader lock.
+@@ -37,6 +48,14 @@ LPTOP_LEVEL_EXCEPTION_FILTER previous_filter{};
+ wchar_t dump_path[MAX_PATH]{};
+ std::atomic<DWORD> reporting_thread{};
+ 
++// A stack overflow leaves the crashed thread the few KiB below the guard page, too little for the
++// report: it hands the exception to the reporter thread, which reports it on a stack of its own.
++DWORD reporter_thread{};
++HANDLE overflow_request{};
++HANDLE overflow_done{};
++EXCEPTION_POINTERS* overflow_pointers{};
++DWORD overflow_thread{};
++
+ struct CodeAddress {
+     char module[64];
+     unsigned long long offset;
+@@ -59,8 +78,9 @@ CodeAddress Locate(const void* address) {
+ }
+ 
+ // `fail_fast` names a failure that ends in a fail-fast (abort() or a CRT invalid-parameter
+-// failure), and is null for an unhandled exception.
+-void Report(EXCEPTION_POINTERS* pointers, const char* fail_fast) {
++// failure), and is null for an unhandled exception. Never inlined: its frame would make
++// OnUnhandledException's too large for a thread that overflowed its stack.
++LICHII_NO_INLINE void Report(EXCEPTION_POINTERS* pointers, const char* fail_fast) {
+     // Called on the crashed thread's stack, which the dispatcher's frames sit on top of: the
+     // stack from the faulting frame on is the part after the exception address.
+     void* frames[40];
+@@ -132,12 +152,381 @@ void ReportFailFast(const char* failure, void* address) {
+     Report(&pointers, failure);
+ }
+ 
++#if defined(_M_X64) || defined(__x86_64__)
++// The x64 unwind operations (UNWIND_CODE::UnwindOp), which the SDK headers leave out.
++enum : unsigned {
++    UWOP_PUSH_NONVOL = 0,
++    UWOP_ALLOC_LARGE = 1,
++    UWOP_ALLOC_SMALL = 2,
++    UWOP_SET_FPREG = 3,
++    UWOP_SAVE_NONVOL = 4,
++    UWOP_SAVE_NONVOL_FAR = 5,
++    UWOP_EPILOG = 6, // Unwind data version 2 only.
++    UWOP_SAVE_XMM128 = 8,
++    UWOP_SAVE_XMM128_FAR = 9,
++    UWOP_PUSH_MACHFRAME = 10,
++};
++
++// RtlVirtualUnwind reads the stack through RSP and the frame register without checking them, and
++// after a wrong step (a guessed leaf frame, unwind data that doesn't match the code) either can
++// point anywhere; a frame register of 0 crashed the sampler's walk (nx2_sampler.cpp). Replays the
++// unwind codes it applies to `context` and checks that every stack read is in [low, high).
++bool UnwindStaysOnStack(DWORD64 image_base, const RUNTIME_FUNCTION* function,
++                        const CONTEXT& context, DWORD64 low, DWORD64 high) {
++    DWORD64 registers[16]{context.Rax, context.Rcx, context.Rdx, context.Rbx,
++                          context.Rsp, context.Rbp, context.Rsi, context.Rdi,
++                          context.R8,  context.R9,  context.R10, context.R11,
++                          context.R12, context.R13, context.R14, context.R15};
++    const auto readable = [low, high](DWORD64 base, DWORD64 offset, DWORD64 size) {
++        return base >= low && base <= high && offset <= high - base && size <= high - base - offset;
++    };
++    DWORD64 rsp = context.Rsp;
++    const DWORD64 pc_offset = context.Rip - image_base - function->BeginAddress;
++    // The saves count from the establisher frame: RSP, or the frame register less its offset once
++    // the prologue has set it. RtlVirtualUnwind finds the code that sets it slot by slot, and past
++    // the codes if there is none: no save is read through such a frame.
++    DWORD64 frame = rsp;
++    const auto* const primary = reinterpret_cast<const BYTE*>(image_base + function->UnwindData);
++    if (const unsigned frame_register = primary[3] & 15; frame_register != 0) {
++        unsigned set = 0;
++        while (set < primary[2] && (primary[5 + 2 * set] & 15) != UWOP_SET_FPREG) {
++            ++set;
++        }
++        if (pc_offset >= primary[1] || (primary[0] >> 3 & UNW_FLAG_CHAININFO) != 0 ||
++            (set < primary[2] && pc_offset >= primary[4 + 2 * set])) {
++            frame = registers[frame_register] - (DWORD64{primary[3]} >> 4) * 16;
++        } else if (set == primary[2]) {
++            frame = 0;
++        }
++    }
++    for (unsigned chained = 0; chained < 32; ++chained) {
++        const auto* const info = reinterpret_cast<const BYTE*>(image_base + function->UnwindData);
++        const unsigned version = info[0] & 7;
++        const unsigned count = info[2];
++        if (version != 1 && version != 2) {
++            return false;
++        }
++        const BYTE* const codes = info + 4;
++        const auto slot = [codes](unsigned index) {
++            return DWORD64{codes[2 * index]} | DWORD64{codes[2 * index + 1]} << 8;
++        };
++        // From inside the prologue, the codes of the instructions that haven't run are skipped.
++        bool skipping = chained == 0;
++        unsigned slots = 1;
++        for (unsigned i = 0; i < count; i += slots) {
++            const unsigned op = codes[2 * i + 1] & 15;
++            const unsigned op_info = codes[2 * i + 1] >> 4;
++            slots = op == UWOP_ALLOC_LARGE                             ? (op_info == 0 ? 2 : 3)
++                    : op == UWOP_SAVE_NONVOL || op == UWOP_SAVE_XMM128 ? 2
++                    : op == UWOP_SAVE_NONVOL_FAR || op == UWOP_SAVE_XMM128_FAR ? 3
++                                                                               : 1;
++            if (i + slots > count) {
++                return false;
++            }
++            if ((op == UWOP_EPILOG && version == 2) ||
++                (skipping && DWORD64{codes[2 * i]} > pc_offset)) {
++                continue;
++            }
++            skipping = false;
++            const DWORD64 far_value = slots == 3 ? slot(i + 1) | slot(i + 2) << 16 : 0;
++            switch (op) {
++            case UWOP_PUSH_NONVOL:
++                if (op_info == 4 || !readable(rsp, 0, 8)) {
++                    return false;
++                }
++                registers[op_info] = *reinterpret_cast<const DWORD64*>(rsp);
++                rsp += 8;
++                break;
++            case UWOP_ALLOC_LARGE:
++            case UWOP_ALLOC_SMALL: {
++                const DWORD64 size = op == UWOP_ALLOC_SMALL ? op_info * 8 + 8
++                                     : op_info == 0         ? slot(i + 1) * 8
++                                                            : far_value;
++                if (!readable(rsp, size, 0)) {
++                    return false;
++                }
++                rsp += size;
++                break;
++            }
++            case UWOP_SET_FPREG: {
++                const unsigned frame_register = info[3] & 15;
++                if (frame_register == 0 || frame_register == 4) {
++                    return false;
++                }
++                rsp = registers[frame_register] - (DWORD64{info[3]} >> 4) * 16;
++                break;
++            }
++            case UWOP_SAVE_NONVOL:
++            case UWOP_SAVE_NONVOL_FAR: {
++                const DWORD64 offset = op == UWOP_SAVE_NONVOL ? slot(i + 1) * 8 : far_value;
++                if (op_info == 4 || !readable(frame, offset, 8)) {
++                    return false;
++                }
++                registers[op_info] = *reinterpret_cast<const DWORD64*>(frame + offset);
++                break;
++            }
++            case UWOP_SAVE_XMM128:
++            case UWOP_SAVE_XMM128_FAR:
++                if (!readable(frame, op == UWOP_SAVE_XMM128 ? slot(i + 1) * 16 : far_value, 16)) {
++                    return false;
++                }
++                break;
++            case UWOP_PUSH_MACHFRAME:
++                // The unwind ends here, with the interrupted RIP and RSP from the frame.
++                return readable(rsp, op_info * 8, 40);
++            default:
++                return false;
++            }
++        }
++        if ((info[0] >> 3 & UNW_FLAG_CHAININFO) == 0) {
++            return readable(rsp, 0, 8); // The return address.
++        }
++        function = reinterpret_cast<const RUNTIME_FUNCTION*>(codes + 2 * ((count + 1) & ~1u));
++    }
++    return false;
++}
++#endif
++
++// The innermost frames of a walk, and the outermost ones in a ring.
++struct StackWalk {
++    static constexpr std::size_t inner_size = 20;
++    static constexpr std::size_t outer_size = 12;
++    DWORD64 inner[inner_size]{};
++    DWORD64 outer[outer_size]{};
++    std::size_t frames = 0;
++    const char* end = "up to a frame it could not unwind";
++
++    void Add(DWORD64 address) {
++        if (frames < inner_size) {
++            inner[frames] = address;
++        } else {
++            outer[(frames - inner_size) % outer_size] = address;
++        }
++        ++frames;
++    }
++};
++
++// Walks the stack of the thread that `pointers` belongs to, which waits in the exception filter
++// below the frames walked. A stack overflow is usually deep recursion: the innermost frames show
++// the recursing code, the outermost ones where it was entered from.
++void Walk(const EXCEPTION_POINTERS& pointers, StackWalk& walk) {
++    walk.Add(reinterpret_cast<std::uintptr_t>(pointers.ExceptionRecord->ExceptionAddress));
++#if defined(_M_X64) || defined(__x86_64__)
++    CONTEXT context = *pointers.ContextRecord;
++    // All the walk reads is between the faulting RSP and the end of the committed, readable
++    // memory around it: the stack's base on a thread's stack.
++    MEMORY_BASIC_INFORMATION stack{};
++    if (VirtualQuery(reinterpret_cast<const void*>(context.Rsp), &stack, sizeof(stack)) == 0 ||
++        stack.State != MEM_COMMIT || (stack.Protect & PAGE_GUARD) != 0 ||
++        (stack.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
++                          PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) {
++        return;
++    }
++    const DWORD64 low = context.Rsp;
++    const DWORD64 high = reinterpret_cast<DWORD64>(stack.BaseAddress) + stack.RegionSize;
++    // Whether an address is in a loaded module's code. Asks the kernel rather than the loader,
++    // whose locks the crashed thread may hold.
++    DWORD64 code_begin = 0;
++    DWORD64 code_end = 0;
++    const auto in_module_code = [&code_begin, &code_end](DWORD64 address) {
++        if (address >= code_begin && address < code_end) {
++            return true;
++        }
++        MEMORY_BASIC_INFORMATION code{};
++        if (VirtualQuery(reinterpret_cast<const void*>(address), &code, sizeof(code)) == 0 ||
++            code.State != MEM_COMMIT || code.Type != MEM_IMAGE ||
++            (code.Protect &
++             (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) {
++            return false;
++        }
++        code_begin = reinterpret_cast<DWORD64>(code.BaseAddress);
++        code_end = code_begin + code.RegionSize;
++        return true;
++    };
++    constexpr std::size_t frame_limit = std::size_t{1} << 20;
++    for (;;) {
++        // JIT code ends the walk: its unwind data describes the dispatcher's prologue only, not
++        // what a block pushed.
++        if (!in_module_code(context.Rip)) {
++            walk.end = "up to code outside the loaded modules";
++            return;
++        }
++        const DWORD64 rsp = context.Rsp;
++        DWORD64 image_base{};
++        const PRUNTIME_FUNCTION function =
++            RtlLookupFunctionEntry(context.Rip, &image_base, nullptr);
++        if (function != nullptr) {
++            if (!UnwindStaysOnStack(image_base, function, context, low, high)) {
++                return;
++            }
++            PVOID handler_data{};
++            DWORD64 establisher_frame{};
++            RtlVirtualUnwind(UNW_FLAG_NHANDLER, image_base, context.Rip, function, &context,
++                             &handler_data, &establisher_frame, nullptr);
++        } else if (walk.frames == 1) {
++            // Code without unwind data is a leaf function, with the return address on top of the
++            // stack, or above the two registers ___chkstk_ms pushes while it probes the stack.
++            DWORD64 slot = rsp;
++            while (slot < rsp + 24 && slot <= high - 8 &&
++                   !in_module_code(*reinterpret_cast<const DWORD64*>(slot))) {
++                slot += 8;
++            }
++            if (slot == rsp + 24 || slot > high - 8) {
++                return;
++            }
++            context.Rip = *reinterpret_cast<const DWORD64*>(slot);
++            context.Rsp = slot + 8;
++        } else {
++            return;
++        }
++        if (context.Rip == 0) {
++            walk.end = "to the thread start";
++            return;
++        }
++        if (context.Rsp <= rsp || context.Rsp > high - 8 || context.Rsp % 8 != 0) {
++            return;
++        }
++        if (walk.frames == frame_limit) {
++            walk.end = "up to the frame limit";
++            return;
++        }
++        walk.Add(context.Rip);
++    }
++#else
++    walk.end = "the fault address only on this architecture";
++#endif
++}
++
++// Appends " module+offset" for each address that fits.
++void AppendFrames(char* text, std::size_t size, const DWORD64* addresses, std::size_t count) {
++    std::size_t used = 0;
++    for (std::size_t i = 0; i < count; ++i) {
++        const CodeAddress frame =
++            Locate(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(addresses[i])));
++        const int written =
++            std::snprintf(text + used, size - used, " %s+%#llx", frame.module, frame.offset);
++        if (written < 0 || used + static_cast<std::size_t>(written) >= size) {
++            text[used] = '\0';
++            return;
++        }
++        used += static_cast<std::size_t>(written);
++    }
++}
++
++// Writes the line and the dump Report() would for the stack overflow the crashed thread handed
++// over, with the stack walked from the exception's context.
++void ReportOverflow() {
++    EXCEPTION_POINTERS* const pointers = overflow_pointers;
++    const EXCEPTION_RECORD& record = *pointers->ExceptionRecord;
++
++    StackWalk walk;
++    Walk(*pointers, walk);
++    char inner[1024] = "";
++    AppendFrames(inner, sizeof(inner), walk.inner, (std::min)(walk.frames, StackWalk::inner_size));
++    const std::size_t outer_count =
++        walk.frames > StackWalk::inner_size
++            ? (std::min)(walk.frames - StackWalk::inner_size, StackWalk::outer_size)
++            : 0;
++    DWORD64 outermost[StackWalk::outer_size]{};
++    for (std::size_t i = 0; i < outer_count; ++i) {
++        const std::size_t frame = walk.frames - outer_count + i;
++        outermost[i] = walk.outer[(frame - StackWalk::inner_size) % StackWalk::outer_size];
++    }
++    char outer[640] = "";
++    AppendFrames(outer, sizeof(outer), outermost, outer_count);
++
++    char thread_name[64] = "";
++    if (const HANDLE thread =
++            OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, overflow_thread)) {
++        PWSTR description{};
++        if (get_thread_description && SUCCEEDED(get_thread_description(thread, &description))) {
++            WideCharToMultiByte(CP_UTF8, 0, description, -1, thread_name, sizeof(thread_name) - 1,
++                                nullptr, nullptr);
++            LocalFree(description);
++        }
++        CloseHandle(thread);
++    }
++
++    const CodeAddress at = Locate(record.ExceptionAddress);
++    LOG_CRASH("Host crash: unhandled exception {:#010x} at {}+{:#x} on thread {} \"{}\", "
++              "info {:#x} {:#x}; stack overflow reported by thread {} \"CrashReporter\"; "
++              "stack ({} {}, {}):{}{}{}",
++              record.ExceptionCode, at.module, at.offset, overflow_thread, thread_name,
++              record.NumberParameters > 0 ? record.ExceptionInformation[0] : 0,
++              record.NumberParameters > 1 ? record.ExceptionInformation[1] : 0,
++              GetCurrentThreadId(), walk.frames, walk.frames == 1 ? "frame" : "frames", walk.end,
++              inner, walk.frames > StackWalk::inner_size + StackWalk::outer_size ? " ..." : "",
++              outer);
++
++    if (!write_dump) {
++        return;
++    }
++    const HANDLE file = CreateFileW(dump_path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
++                                    FILE_ATTRIBUTE_NORMAL, nullptr);
++    if (file == INVALID_HANDLE_VALUE) {
++        return;
++    }
++    MINIDUMP_EXCEPTION_INFORMATION information{overflow_thread, pointers, FALSE};
++    const BOOL written = write_dump(GetCurrentProcess(), GetCurrentProcessId(), file,
++                                    MiniDumpWithThreadInfo, &information, nullptr, nullptr);
++    const DWORD error = written ? 0 : GetLastError();
++    CloseHandle(file);
++    LOG_CRASH("Host crash: minidump of process {} {} ({:#x})", GetCurrentProcessId(),
++              written ? "written next to the log as eden_crash.dmp" : "failed", error);
++}
++
++DWORD WINAPI ReporterMain(void*) {
++    // The C runtime gives a thread its own data from the heap on first use: not during a report.
++    errno = 0;
++    // Only a crashed thread sets the event, after storing its pointers. Any other wake (a failed
++    // wait, the handle closed by mistake elsewhere) ends the thread rather than report nothing.
++    while (WaitForSingleObject(overflow_request, INFINITE) == WAIT_OBJECT_0 && overflow_pointers) {
++        ReportOverflow();
++        SetEvent(overflow_done);
++    }
++    return 0;
++}
++
++// Without the reporter thread, the crashed thread reports a stack overflow itself, as before.
++void StartReporter() {
++    overflow_request = CreateEventW(nullptr, FALSE, FALSE, nullptr);
++    overflow_done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
++    DWORD id = 0;
++    const HANDLE thread = overflow_request && overflow_done
++                              ? CreateThread(nullptr, 512 * 1024, ReporterMain, nullptr,
++                                             STACK_SIZE_PARAM_IS_A_RESERVATION, &id)
++                              : nullptr;
++    if (!thread) {
++        if (overflow_request) {
++            CloseHandle(overflow_request);
++        }
++        if (overflow_done) {
++            CloseHandle(overflow_done);
++        }
++        overflow_request = nullptr;
++        overflow_done = nullptr;
++        return;
++    }
++    const auto set_thread_description =
++        reinterpret_cast<SetThreadDescriptionFn>(reinterpret_cast<void*>(
++            GetProcAddress(GetModuleHandleW(L"KernelBase.dll"), "SetThreadDescription")));
++    if (set_thread_description) {
++        set_thread_description(thread, L"CrashReporter");
++    }
++    CloseHandle(thread);
++    reporter_thread = id;
++}
++
+ // Only the first thread to crash reports. A second one waits a while for it to end the process,
+ // then falls through to the previous handling, so a report stuck on a lock the second thread
+-// holds cannot hang the process. A crash inside the report falls through at once.
++// holds cannot hang the process. A crash inside the report, the reporter thread's included, falls
++// through at once.
+ bool BeginReport() {
+     DWORD expected = 0;
+     const DWORD self = GetCurrentThreadId();
++    if (self == reporter_thread) {
++        return false;
++    }
+     if (reporting_thread.compare_exchange_strong(expected, self)) {
+         return true;
+     }
+@@ -149,7 +538,17 @@ bool BeginReport() {
+ 
+ LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers) {
+     if (BeginReport()) {
+-        Report(pointers, nullptr);
++        if (pointers->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW &&
++            reporter_thread != 0) {
++            // Nothing here may need much stack. The wait is bounded so that the process still
++            // ends if the reporter blocks on a lock this thread holds.
++            overflow_pointers = pointers;
++            overflow_thread = GetCurrentThreadId();
++            SetEvent(overflow_request);
++            WaitForSingleObject(overflow_done, 30000);
++        } else {
++            Report(pointers, nullptr);
++        }
+     }
+     return previous_filter ? previous_filter(pointers) : EXCEPTION_CONTINUE_SEARCH;
+ }
+@@ -158,20 +557,24 @@ LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers) {
  // asserts end in abort(), which the C runtime turns into a fail-fast that skips the filter above.
  void OnAbort(int) {
      if (BeginReport()) {
@@ -6672,7 +7215,12 @@ index 36e160021a..2ade61c7e7 100644
      }
  }
  
-@@ -167,7 +175,7 @@ void OnAbort(int) {
++#ifdef _MSC_VER
+ // A CRT function given an invalid parameter (a bad file descriptor or a null format string, for
+-// example) also fail-fasts and skips the filter.
++// example) also fail-fasts and skips the filter. Not in MinGW builds: mingw-w64's startup code
++// installs a handler that does nothing, so there the call returns its error and the process
++// carries on.
  void OnInvalidParameter(const wchar_t* expression, const wchar_t* function, const wchar_t* file,
                          unsigned int line, std::uintptr_t reserved) {
      if (BeginReport()) {
@@ -6681,6 +7229,60 @@ index 36e160021a..2ade61c7e7 100644
      }
      // What the C runtime does without a handler.
      _invoke_watson(expression, function, file, line, reserved);
+ }
++#endif
+ 
+ } // Anonymous namespace
+ 
+@@ -186,9 +589,24 @@ void InstallCrashHandler(const std::filesystem::path& dump_directory) {
+     }
+     get_thread_description = reinterpret_cast<GetThreadDescriptionFn>(reinterpret_cast<void*>(
+         GetProcAddress(GetModuleHandleW(L"KernelBase.dll"), "GetThreadDescription")));
++    if (reporter_thread == 0) {
++        StartReporter();
++    }
+     previous_filter = SetUnhandledExceptionFilter(OnUnhandledException);
+     std::signal(SIGABRT, OnAbort);
++#ifdef _MSC_VER
+     _set_invalid_parameter_handler(OnInvalidParameter);
++#endif
++}
++
++void GuaranteeStackForCrashReport() {
++    ULONG_PTR low{};
++    ULONG_PTR high{};
++    GetCurrentThreadStackLimits(&low, &high);
++    if (high - low >= 2 * 1024 * 1024) {
++        ULONG bytes = 64 * 1024;
++        SetThreadStackGuarantee(&bytes);
++    }
+ }
+ 
+ } // namespace Common::Windows
+diff --git a/src/common/windows/crash_handler.h b/src/common/windows/crash_handler.h
+index ba13549518..e84517c884 100644
+--- a/src/common/windows/crash_handler.h
++++ b/src/common/windows/crash_handler.h
+@@ -7,9 +7,16 @@
+ 
+ namespace Common::Windows {
+ 
+-/// On an unhandled exception, abort() or a CRT invalid-parameter failure, logs one Critical "Host
+-/// crash" line (code, faulting address and stack as module+offset, thread), flushes the log and
+-/// writes <dump_directory>/eden_crash.dmp. Call after Common::Log::Initialize.
++/// On an unhandled exception, abort() or, in MSVC builds, a CRT invalid-parameter failure, logs one
++/// Critical "Host crash" line (code, faulting address and stack as module+offset, thread), flushes
++/// the log and writes <dump_directory>/eden_crash.dmp. A stack overflow leaves the crashed thread
++/// too little stack for that: a thread the handler starts reports it. Call after
++/// Common::Log::Initialize.
+ void InstallCrashHandler(const std::filesystem::path& dump_directory);
+ 
++/// Keeps 64 KiB of the calling thread's stack back for a stack overflow, on a stack of 2 MiB or
++/// more (a 1 MiB default stack keeps all of it). Without it Windows raises one with about a page
++/// left, which the exception's dispatch can use up before it reaches the handler.
++void GuaranteeStackForCrashReport();
++
+ } // namespace Common::Windows
 diff --git a/src/common/windows/hybrid_cpu.cpp b/src/common/windows/hybrid_cpu.cpp
 new file mode 100644
 index 0000000000..94cfae3fd3
@@ -13210,7 +13812,7 @@ index bc79fc82bb..ebc928afa0 100644
  }
  
 diff --git a/src/lichii/CMakeLists.txt b/src/lichii/CMakeLists.txt
-index b6e5b2d576..22a6230bf7 100644
+index b6e5b2d576..bbc2f6914b 100644
 --- a/src/lichii/CMakeLists.txt
 +++ b/src/lichii/CMakeLists.txt
 @@ -80,8 +80,6 @@ add_executable(lichii
@@ -13252,6 +13854,16 @@ index b6e5b2d576..22a6230bf7 100644
  if (LICHII_CRASH_DUMPS)
      target_sources(lichii PRIVATE
          breakpad.cpp
+@@ -422,6 +443,9 @@ elseif(WIN32)
+     elseif(MINGW)
+         set_target_properties(lichii PROPERTIES LINK_FLAGS_RELEASE "-Wl,--subsystem,windows")
+         target_link_libraries(lichii PRIVATE dwmapi)
++        # Every thread started without a stack size of its own reserves 16 MiB instead of lld's
++        # 1 MiB, among them the shader job workers on which the Vulkan driver compiles pipelines.
++        target_link_options(lichii PRIVATE "LINKER:--stack,16777216")
+     endif()
+ endif()
+ 
 diff --git a/src/lichii/configuration/amd_fsr4_panel.cpp b/src/lichii/configuration/amd_fsr4_panel.cpp
 deleted file mode 100644
 index 14694a997e..0000000000
@@ -14111,6 +14723,19 @@ index 10eac37ab9..74df048d45 100644
  
  signals:
      void closed();
+diff --git a/src/lichii_cmd/CMakeLists.txt b/src/lichii_cmd/CMakeLists.txt
+index ddbaa5f8a2..ef1806f8d1 100644
+--- a/src/lichii_cmd/CMakeLists.txt
++++ b/src/lichii_cmd/CMakeLists.txt
+@@ -66,6 +66,8 @@ if(WIN32)
+         set_target_properties(lichii-cmd PROPERTIES LINK_FLAGS_RELEASE "/SUBSYSTEM:WINDOWS /ENTRY:${LICHII_CMD_ENTRY}")
+     elseif(MINGW)
+         set_target_properties(lichii-cmd PROPERTIES LINK_FLAGS_RELEASE "-Wl,--subsystem,windows")
++        # The same 16 MiB default thread stack as lichii.exe (src/lichii/CMakeLists.txt).
++        target_link_options(lichii-cmd PRIVATE "LINKER:--stack,16777216")
+     endif()
+ endif()
+ 
 diff --git a/src/qt_common/config/shared_translation.cpp b/src/qt_common/config/shared_translation.cpp
 index 67c9841b6a..9eb4fada76 100644
 --- a/src/qt_common/config/shared_translation.cpp
@@ -14552,7 +15177,7 @@ index 71ad263c38..34523c45e6 100644
  
  void EmitEndPrimitive(EmitContext& ctx, const IR::Value& stream) {
 diff --git a/src/shader_recompiler/backend/spirv/spirv_emit_context.cpp b/src/shader_recompiler/backend/spirv/spirv_emit_context.cpp
-index f73c639d63..43f88e995c 100644
+index f73c639d63..6a3ce195df 100644
 --- a/src/shader_recompiler/backend/spirv/spirv_emit_context.cpp
 +++ b/src/shader_recompiler/backend/spirv/spirv_emit_context.cpp
 @@ -548,6 +548,16 @@ Id EmitContext::BitOffset16(const IR::Value& offset) {
@@ -14572,7 +15197,18 @@ index f73c639d63..43f88e995c 100644
  Id EmitContext::LoadShared(Id result_type, Id pointer) {
      if (!vulkan_memory_model) {
          return OpLoad(result_type, pointer);
-@@ -1352,7 +1362,8 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
+@@ -1083,6 +1093,10 @@ void EmitContext::DefineWriteStorageCasLoopFunction(const Info& info) {
+ /// Defines the functions that route global memory accesses and atomics to the storage buffer
+ /// holding the address at run time.
+ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
++    if (profile.r64_global_memory_routing) {
++        DefineGlobalMemoryFunctionsR64(program);
++        return;
++    }
+     const Info& info{program.info};
+     if (!info.uses_global_memory || !profile.support_int64) {
+         return;
+@@ -1352,7 +1366,8 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
          return;
      }
      // Atomics the storage buffer pass could not track: the same routing, with the operation on
@@ -14582,7 +15218,7 @@ index f73c639d63..43f88e995c 100644
      using enum GlobalAtomic;
      const auto kind_of = [](IR::Opcode opcode) -> std::optional<GlobalAtomic> {
          switch (opcode) {
-@@ -1390,9 +1401,11 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
+@@ -1390,9 +1405,11 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
                                      TypeFunction(type, U64, type))};
          const Id addr{OpFunctionParameter(U64)};
          const Id value{OpFunctionParameter(type)};
@@ -14596,7 +15232,7 @@ index f73c639d63..43f88e995c 100644
              calls_cas_loop ? Routing::PerBuffer : Routing::Write, [&](Id pointer, Id ssbo, Id word) {
                  const auto atomic = [&](Id (Sirit::Module::*op)(Id, Id, Id, Id, Id)) {
                      return (this->*op)(U32[1], pointer, scope, zero, value);
-@@ -1421,7 +1434,8 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
+@@ -1421,7 +1438,8 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
                  case Dec:
                      return OpFunctionCall(U32[1], decrement_cas_ssbo, word, value, ssbo);
                  case AddF32:
@@ -14606,7 +15242,312 @@ index f73c639d63..43f88e995c 100644
                  case Count:
                      break;
                  }
-@@ -1669,6 +1683,12 @@ void EmitContext::DefineStorageBuffers(const Info& info, u32& binding) {
+@@ -1452,6 +1470,304 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
+     }
+ }
+ 
++/// r64's helpers (577b0d1577): each candidate buffer's branch returns, and the helper returns
++/// its fallback after the last branch.
++void EmitContext::DefineGlobalMemoryFunctionsR64(const IR::Program& program) {
++    const Info& info{program.info};
++    if (!info.uses_global_memory || !profile.support_int64) {
++        return;
++    }
++    using DefPtr = Id StorageDefinitions::*;
++    const Id zero{u32_zero_value};
++    const auto define_body{[&](DefPtr ssbo_member, Id addr, Id element_pointer, u32 shift,
++                               auto&& callback) {
++        AddLabel();
++        const size_t num_buffers{info.storage_buffers_descriptors.size()};
++        const u64 ssbo_align_mask{~(profile.min_ssbo_alignment - 1U)};
++        const auto base_address{[&](size_t index) {
++            const auto& ssbo{info.storage_buffers_descriptors[index]};
++            const Id words{EmitGetCbufU32x2(*this, IR::Value{ssbo.cbuf_index},
++                                           IR::Value{ssbo.cbuf_offset})};
++            if (ssbo.indirect_offset == ~0U) {
++                return OpBitwiseAnd(U64, OpBitcast(U64, words), Constant(U64, ssbo_align_mask));
++            }
++            // The pointer is read through the buffer bound for the constant buffer pointer.
++            const auto holder{std::ranges::find_if(
++                info.storage_buffers_descriptors, [&ssbo](const auto& desc) {
++                    return desc.cbuf_index == ssbo.cbuf_index &&
++                           desc.cbuf_offset == ssbo.cbuf_offset && desc.indirect_offset == ~0U;
++                })};
++            if (holder == info.storage_buffers_descriptors.end()) {
++                return Constant(U64, ~u64{0});
++            }
++            const size_t holder_index{static_cast<size_t>(
++                std::distance(info.storage_buffers_descriptors.begin(), holder))};
++            const Id holder_low{OpCompositeExtract(U32[1], words, 0U)};
++            const Id byte{OpIAdd(U32[1],
++                                 OpBitwiseAnd(U32[1], holder_low,
++                                              Const(static_cast<u32>(profile.min_ssbo_alignment - 1))),
++                                 Const(ssbo.indirect_offset))};
++            const Id word_index{OpShiftRightLogical(U32[1], byte, Const(2U))};
++            const Id storage{ssbos[holder_index].U32};
++            const auto load_word{[&](Id word) {
++                return OpLoad(U32[1], OpAccessChain(storage_types.U32.element, storage, zero, word));
++            }};
++            const Id pointer_words{OpCompositeConstruct(
++                U32[2], load_word(word_index), load_word(OpIAdd(U32[1], word_index, Const(1U))))};
++            return OpBitwiseAnd(U64, OpBitcast(U64, pointer_words), Constant(U64, ssbo_align_mask));
++        }};
++        const auto access{[&](size_t index, Id ssbo_addr, Id cond) {
++            const Id then_label{OpLabel()};
++            const Id else_label{OpLabel()};
++            OpSelectionMerge(else_label, spv::SelectionControlMask::MaskNone);
++            OpBranchConditional(cond, then_label, else_label);
++            AddLabel(then_label);
++            const Id ssbo_id{ssbos[index].*ssbo_member};
++            const Id ssbo_offset{OpUConvert(U32[1], OpISub(U64, addr, ssbo_addr))};
++            const Id ssbo_index{OpShiftRightLogical(U32[1], ssbo_offset, Const(shift))};
++            const Id ssbo_pointer{OpAccessChain(element_pointer, ssbo_id, zero, ssbo_index)};
++            callback(ssbo_pointer, ssbo_id, ssbo_index);
++            AddLabel(else_label);
++        }};
++        if (info.native_global_bounds) {
++            // Native pointers carry no NVN size word. The address belongs to the candidate buffer
++            // whose base is the closest one at or below it (bounds come from the binding).
++            std::vector<Id> bases(num_buffers);
++            Id best_index{Const(~0U)};
++            Id best_distance{Constant(U64, ~u64{0})};
++            for (size_t index = 0; index < num_buffers; ++index) {
++                bases[index] = base_address(index);
++                const Id distance{OpISub(U64, addr, bases[index])};
++                const Id better{OpLogicalAnd(U1, OpUGreaterThanEqual(U1, addr, bases[index]),
++                                             OpULessThan(U1, distance, best_distance))};
++                best_distance = OpSelect(U64, better, distance, best_distance);
++                best_index = OpSelect(U32[1], better, Const(static_cast<u32>(index)), best_index);
++            }
++            for (size_t index = 0; index < num_buffers; ++index) {
++                access(index, bases[index],
++                       OpIEqual(U1, best_index, Const(static_cast<u32>(index))));
++            }
++            return;
++        }
++        for (size_t index = 0; index < num_buffers; ++index) {
++            if (!UsesNvnStorageDescriptor(info, info.storage_buffers_descriptors[index])) {
++                continue;
++            }
++            const auto& ssbo{info.storage_buffers_descriptors[index]};
++            const Id ssbo_addr{base_address(index)};
++            const Id size{EmitGetCbufU32(*this, IR::Value{ssbo.cbuf_index},
++                                       IR::Value{ssbo.cbuf_offset + 8})};
++            const Id ssbo_size{OpUConvert(U64, size)};
++            const Id ssbo_end{OpIAdd(U64, ssbo_addr, ssbo_size)};
++            const Id cond{OpLogicalAnd(U1, OpUGreaterThanEqual(U1, addr, ssbo_addr),
++                                       OpULessThan(U1, addr, ssbo_end))};
++            access(index, ssbo_addr, cond);
++        }
++    }};
++    const auto define_load{[&](DefPtr ssbo_member, Id element_pointer, Id type, u32 shift) {
++        const Id function_type{TypeFunction(type, U64)};
++        const Id func_id{OpFunction(type, spv::FunctionControlMask::MaskNone, function_type)};
++        const Id addr{OpFunctionParameter(U64)};
++        if (!profile.support_descriptor_aliasing && shift > 2) {
++            AddLabel();
++            std::array<Id, 4> words;
++            const u32 count = 1U << (shift - 2);
++            for (u32 i = 0; i < count; ++i) {
++                const Id word_address{OpIAdd(U64, addr, Constant(U64, i * sizeof(u32)))};
++                words[i] = OpFunctionCall(U32[1], load_global_func_u32, word_address);
++            }
++            OpReturnValue(OpCompositeConstruct(type, std::span{words}.first(count)));
++            OpFunctionEnd();
++            return func_id;
++        }
++        // Buffers are bound at the device's storage buffer alignment (4 bytes on AMD), so an
++        // aligned 8 or 16 byte guest access can start at any word of the binding and the vector
++        // view (offset >> shift) would read the vector before it. Those accesses read the words
++        // of the buffer found for the address.
++        if (shift > 2 && profile.min_ssbo_alignment < (1U << shift)) {
++            const u32 count = 1U << (shift - 2);
++            define_body(&StorageDefinitions::U32, addr, storage_types.U32.element, 2,
++                        [&](Id, Id ssbo_id, Id word_index) {
++                            std::array<Id, 4> words;
++                            for (u32 i = 0; i < count; ++i) {
++                                const Id index{i == 0 ? word_index
++                                                      : OpIAdd(U32[1], word_index, Const(i))};
++                                words[i] = OpLoad(U32[1], OpAccessChain(storage_types.U32.element,
++                                                                         ssbo_id, zero, index));
++                            }
++                            OpReturnValue(
++                                OpCompositeConstruct(type, std::span{words}.first(count)));
++                        });
++            OpReturnValue(ConstantNull(type));
++            OpFunctionEnd();
++            return func_id;
++        }
++        define_body(ssbo_member, addr, element_pointer, shift,
++                    [&](Id ssbo_pointer, Id, Id) { OpReturnValue(OpLoad(type, ssbo_pointer)); });
++        OpReturnValue(ConstantNull(type));
++        OpFunctionEnd();
++        return func_id;
++    }};
++    const auto define_write{[&](DefPtr ssbo_member, Id element_pointer, Id type, u32 shift) {
++        const Id function_type{TypeFunction(void_id, U64, type)};
++        const Id func_id{OpFunction(void_id, spv::FunctionControlMask::MaskNone, function_type)};
++        const Id addr{OpFunctionParameter(U64)};
++        const Id data{OpFunctionParameter(type)};
++        if (!profile.support_descriptor_aliasing && shift > 2) {
++            AddLabel();
++            const u32 count = 1U << (shift - 2);
++            for (u32 i = 0; i < count; ++i) {
++                const Id word_address{OpIAdd(U64, addr, Constant(U64, i * sizeof(u32)))};
++                const Id word{OpCompositeExtract(U32[1], data, i)};
++                OpFunctionCall(void_id, write_global_func_u32, word_address, word);
++            }
++            OpReturn();
++            OpFunctionEnd();
++            return func_id;
++        }
++        if (shift > 2 && profile.min_ssbo_alignment < (1U << shift)) {
++            const u32 count = 1U << (shift - 2);
++            define_body(&StorageDefinitions::U32, addr, storage_types.U32.element, 2,
++                        [&](Id, Id ssbo_id, Id word_index) {
++                            for (u32 i = 0; i < count; ++i) {
++                                const Id index{i == 0 ? word_index
++                                                      : OpIAdd(U32[1], word_index, Const(i))};
++                                OpStore(OpAccessChain(storage_types.U32.element, ssbo_id, zero,
++                                                      index),
++                                        OpCompositeExtract(U32[1], data, i));
++                            }
++                            OpReturn();
++                        });
++            OpReturn();
++            OpFunctionEnd();
++            return func_id;
++        }
++        define_body(ssbo_member, addr, element_pointer, shift, [&](Id ssbo_pointer, Id, Id) {
++            OpStore(ssbo_pointer, data);
++            OpReturn();
++        });
++        OpReturn();
++        OpFunctionEnd();
++        return func_id;
++    }};
++    const auto define{
++        [&](DefPtr ssbo_member, const StorageTypeDefinition& type_def, Id type, size_t size) {
++            const Id element_type{type_def.element};
++            const u32 shift{static_cast<u32>(std::countr_zero(size))};
++            const Id load_func{define_load(ssbo_member, element_type, type, shift)};
++            const Id write_func{define_write(ssbo_member, element_type, type, shift)};
++            return std::make_pair(load_func, write_func);
++        }};
++    std::tie(load_global_func_u32, write_global_func_u32) =
++        define(&StorageDefinitions::U32, storage_types.U32, U32[1], sizeof(u32));
++    std::tie(load_global_func_u32x2, write_global_func_u32x2) =
++        define(&StorageDefinitions::U32x2, storage_types.U32x2, U32[2], sizeof(u32[2]));
++    std::tie(load_global_func_u32x4, write_global_func_u32x4) =
++        define(&StorageDefinitions::U32x4, storage_types.U32x4, U32[4], sizeof(u32[4]));
++
++    if (!std::ranges::any_of(info.storage_buffers_descriptors, [&](const auto& descriptor) {
++            return info.native_global_bounds || UsesNvnStorageDescriptor(info, descriptor);
++        })) {
++        return;
++    }
++    // Atomics the storage buffer pass could not track: the same routing, with the operation on
++    // the routed word (INC, DEC and F32 add through their storage buffer CAS loops, F32 add on
++    // the F32 view with native_f32_atomic_add).
++    using enum GlobalAtomic;
++    const auto kind_of = [](IR::Opcode opcode) -> std::optional<GlobalAtomic> {
++        switch (opcode) {
++        case IR::Opcode::GlobalAtomicIAdd32: return IAdd;
++        case IR::Opcode::GlobalAtomicSMin32: return SMin;
++        case IR::Opcode::GlobalAtomicUMin32: return UMin;
++        case IR::Opcode::GlobalAtomicSMax32: return SMax;
++        case IR::Opcode::GlobalAtomicUMax32: return UMax;
++        case IR::Opcode::GlobalAtomicInc32: return Inc;
++        case IR::Opcode::GlobalAtomicDec32: return Dec;
++        case IR::Opcode::GlobalAtomicAnd32: return And;
++        case IR::Opcode::GlobalAtomicOr32: return Or;
++        case IR::Opcode::GlobalAtomicXor32: return Xor;
++        case IR::Opcode::GlobalAtomicExchange32: return Exchange;
++        case IR::Opcode::GlobalAtomicAddF32: return AddF32;
++        default: return std::nullopt;
++        }
++    };
++    std::array<bool, static_cast<size_t>(Count)> used{};
++    for (const IR::Block* const block : program.blocks) {
++        for (const IR::Inst& inst : block->Instructions()) {
++            if (const auto kind = kind_of(inst.GetOpcode())) {
++                used[static_cast<size_t>(*kind)] = true;
++            }
++        }
++    }
++    const Id scope{Const(static_cast<u32>(spv::Scope::Device))};
++    for (size_t index = 0; index < used.size(); ++index) {
++        if (!used[index]) {
++            continue;
++        }
++        const auto kind = static_cast<GlobalAtomic>(index);
++        const Id type{kind == AddF32 ? F32[1] : U32[1]};
++        const Id func_id{OpFunction(type, spv::FunctionControlMask::MaskNone,
++                                    TypeFunction(type, U64, type))};
++        const Id addr{OpFunctionParameter(U64)};
++        const Id value{OpFunctionParameter(type)};
++        const bool native_add{kind == AddF32 && native_f32_atomic_add};
++        define_body(native_add ? &StorageDefinitions::F32 : &StorageDefinitions::U32, addr,
++                    native_add ? storage_types.F32.element : storage_types.U32.element, 2,
++                    [&](Id pointer, Id ssbo, Id word) {
++                        const auto atomic = [&](Id (Sirit::Module::*op)(Id, Id, Id, Id, Id)) {
++                            return (this->*op)(U32[1], pointer, scope, zero, value);
++                        };
++                        switch (kind) {
++                        case IAdd: OpReturnValue(atomic(&Sirit::Module::OpAtomicIAdd)); break;
++                        case SMin: OpReturnValue(atomic(&Sirit::Module::OpAtomicSMin)); break;
++                        case UMin: OpReturnValue(atomic(&Sirit::Module::OpAtomicUMin)); break;
++                        case SMax: OpReturnValue(atomic(&Sirit::Module::OpAtomicSMax)); break;
++                        case UMax: OpReturnValue(atomic(&Sirit::Module::OpAtomicUMax)); break;
++                        case And: OpReturnValue(atomic(&Sirit::Module::OpAtomicAnd)); break;
++                        case Or: OpReturnValue(atomic(&Sirit::Module::OpAtomicOr)); break;
++                        case Xor: OpReturnValue(atomic(&Sirit::Module::OpAtomicXor)); break;
++                        case Exchange: OpReturnValue(atomic(&Sirit::Module::OpAtomicExchange)); break;
++                        case Inc:
++                            OpReturnValue(OpFunctionCall(U32[1], increment_cas_ssbo, word, value, ssbo));
++                            break;
++                        case Dec:
++                            OpReturnValue(OpFunctionCall(U32[1], decrement_cas_ssbo, word, value, ssbo));
++                            break;
++                        case AddF32:
++                            OpReturnValue(native_add ? AtomicAddF32(pointer, scope, zero, value)
++                                                     : OpFunctionCall(F32[1], f32_add_cas, word,
++                                                                      value, ssbo));
++                            break;
++                        case Count: break;
++                        }
++                    });
++        OpReturnValue(ConstantNull(type));
++        OpFunctionEnd();
++        global_atomic_funcs[index] = func_id;
++    }
++    if (std::ranges::any_of(program.blocks, [](const IR::Block* block) {
++            return std::ranges::any_of(block->Instructions(), [](const IR::Inst& inst) {
++                return inst.GetOpcode() == IR::Opcode::GlobalAtomicCompareExchange32;
++            });
++        })) {
++        const Id function_type{TypeFunction(U32[1], U64, U32[1], U32[1])};
++        atomic_cas_global_func_u32 =
++            OpFunction(U32[1], spv::FunctionControlMask::MaskNone, function_type);
++        const Id address{OpFunctionParameter(U64)};
++        const Id comparator{OpFunctionParameter(U32[1])};
++        const Id value{OpFunctionParameter(U32[1])};
++        define_body(&StorageDefinitions::U32, address, storage_types.U32.element, 2,
++                    [&](Id pointer, Id, Id) {
++                        OpReturnValue(OpAtomicCompareExchange(U32[1], pointer, scope,
++                                                              u32_zero_value, u32_zero_value,
++                                                              value, comparator));
++                    });
++        // No buffer matched: report success so a guest CAS retry loop cannot spin forever.
++        OpReturnValue(comparator);
++        OpFunctionEnd();
++    }
++}
++
+ void EmitContext::DefineRescalingInput(const Info& info) {
+     if (!info.uses_rescaling_uniform) {
+         return;
+@@ -1669,6 +1985,12 @@ void EmitContext::DefineStorageBuffers(const Info& info, u32& binding) {
      IR::Type used_types{profile.support_descriptor_aliasing ? info.used_storage_buffer_types
                                                              : IR::Type::U32};
      used_types |= IR::Type::U32;
@@ -14619,7 +15560,7 @@ index f73c639d63..43f88e995c 100644
      if (profile.support_int8 && profile.support_storage_buffer_8bit &&
          True(used_types & IR::Type::U8)) {
          DefineSsbos(*this, storage_types.U8, &StorageDefinitions::U8, info, binding, U8,
-@@ -1706,8 +1726,9 @@ void EmitContext::DefineStorageBuffers(const Info& info, u32& binding) {
+@@ -1706,8 +2028,9 @@ void EmitContext::DefineStorageBuffers(const Info& info, u32& binding) {
      for (const StorageBufferDescriptor& desc : info.storage_buffers_descriptors) {
          binding += desc.count;
      }
@@ -14630,7 +15571,7 @@ index f73c639d63..43f88e995c 100644
          info.uses_atomic_f16x2_add || info.uses_atomic_f16x2_min || info.uses_atomic_f16x2_max ||
          info.uses_atomic_f32x2_add || info.uses_atomic_f32x2_min || info.uses_atomic_f32x2_max};
      if (needs_function) {
-@@ -1721,7 +1742,7 @@ void EmitContext::DefineStorageBuffers(const Info& info, u32& binding) {
+@@ -1721,7 +2044,7 @@ void EmitContext::DefineStorageBuffers(const Info& info, u32& binding) {
          decrement_cas_ssbo = CasLoop(*this, Operation::Decrement, storage_types.U32.array,
                                       storage_types.U32.element, U32[1], spv::Scope::Device);
      }
@@ -14639,7 +15580,7 @@ index f73c639d63..43f88e995c 100644
          f32_add_cas = CasLoop(*this, Operation::FPAdd, storage_types.U32.array,
                                storage_types.U32.element, F32[1], spv::Scope::Device);
      }
-@@ -1939,13 +1960,8 @@ void EmitContext::DefineInputs(const IR::Program& program) {
+@@ -1939,13 +2262,8 @@ void EmitContext::DefineInputs(const IR::Program& program) {
          layer = DefineInput(*this, U32[1], false, spv::BuiltIn::Layer);
          Decorate(layer, spv::Decoration::Flat);
      }
@@ -14654,7 +15595,7 @@ index f73c639d63..43f88e995c 100644
          const bool is_fragment{stage == Stage::Fragment};
          if (!is_fragment && profile.has_broken_spirv_position_input) {
              need_input_position_indirect = true;
-@@ -2055,12 +2071,7 @@ void EmitContext::DefineInputs(const IR::Program& program) {
+@@ -2055,12 +2373,7 @@ void EmitContext::DefineInputs(const IR::Program& program) {
              case Interpolation::Smooth:
                  break;
              case Interpolation::NoPerspective:
@@ -14669,7 +15610,7 @@ index f73c639d63..43f88e995c 100644
              case Interpolation::Flat:
                  Decorate(id, spv::Decoration::Flat);
 diff --git a/src/shader_recompiler/backend/spirv/spirv_emit_context.h b/src/shader_recompiler/backend/spirv/spirv_emit_context.h
-index 73dae205b2..9901490c9f 100644
+index 73dae205b2..37c268f0f3 100644
 --- a/src/shader_recompiler/backend/spirv/spirv_emit_context.h
 +++ b/src/shader_recompiler/backend/spirv/spirv_emit_context.h
 @@ -198,6 +198,9 @@ public:
@@ -14701,6 +15642,15 @@ index 73dae205b2..9901490c9f 100644
  
      Id output_point_size{};
      Id output_position{};
+@@ -505,6 +509,8 @@ private:
+     void DefineAttributeMemAccess(const Info& info);
+     void DefineWriteStorageCasLoopFunction(const Info& info);
+     void DefineGlobalMemoryFunctions(const IR::Program& program);
++    /// r64's global memory helpers (Profile::r64_global_memory_routing)
++    void DefineGlobalMemoryFunctionsR64(const IR::Program& program);
+     void DefineRescalingInput(const Info& info);
+     void DefineRescalingInputPushConstant();
+     void DefineRescalingInputUniformConstant();
 diff --git a/src/shader_recompiler/frontend/maxwell/translate_program.cpp b/src/shader_recompiler/frontend/maxwell/translate_program.cpp
 index edc238a42c..b69391f6fa 100644
 --- a/src/shader_recompiler/frontend/maxwell/translate_program.cpp
@@ -14890,7 +15840,7 @@ index 35e7797e19..771ebd00f3 100644
          for (IR::Inst& inst : (*block)->Instructions()) {
              if (inst.GetOpcode() == IR::Opcode::Phi) {
 diff --git a/src/shader_recompiler/profile.h b/src/shader_recompiler/profile.h
-index 0cf8fe18fb..0ad2b5674a 100644
+index 0cf8fe18fb..ea081b97ed 100644
 --- a/src/shader_recompiler/profile.h
 +++ b/src/shader_recompiler/profile.h
 @@ -55,6 +55,8 @@ struct Profile {
@@ -14902,6 +15852,18 @@ index 0cf8fe18fb..0ad2b5674a 100644
      bool support_shared_int64_atomics{};
      bool support_derivative_control{};
      bool support_geometry_shader_passthrough{};
+@@ -78,6 +80,11 @@ struct Profile {
+     /// branch chain (#619). AMD lowers the NonUniform access to a waterfall loop, which spills in
+     /// vertex and mesh shaders that already use every register, so it keeps the chain.
+     bool select_global_memory_buffer{};
++    /// Routed global memory accesses return from inside the branch of the buffer that holds the
++    /// address (r64's helpers, before #1681 merged the branches into one return). r65 died on
++    /// AMD's proprietary driver while it built Ocarina's boot pipelines with the merged chain. It
++    /// replaces select_global_memory_buffer.
++    bool r64_global_memory_routing{};
+ 
+     bool warp_size_potentially_larger_than_guest{};
+ 
 diff --git a/src/shader_recompiler/runtime_info.h b/src/shader_recompiler/runtime_info.h
 index 5cc9f16e44..0027e5ff9a 100644
 --- a/src/shader_recompiler/runtime_info.h
@@ -16278,7 +17240,7 @@ index 7f73abd23f..0000000000
 -    }
 -}
 diff --git a/src/tests/video_core/global_atomic_routing.cpp b/src/tests/video_core/global_atomic_routing.cpp
-index 91a917672c..7da17b3065 100644
+index 91a917672c..1d177da49c 100644
 --- a/src/tests/video_core/global_atomic_routing.cpp
 +++ b/src/tests/video_core/global_atomic_routing.cpp
 @@ -56,7 +56,8 @@ std::vector<std::vector<u32>> Instructions(const std::vector<u32>& code, u32 opc
@@ -16287,19 +17249,118 @@ index 91a917672c..7da17b3065 100644
  // tracks the load but not the atomic.
 -std::vector<u32> EmitUntrackedAtomic(IR::Opcode opcode, bool select) {
 +std::vector<u32> EmitUntrackedAtomic(IR::Opcode opcode, bool select,
-+                                     bool native_float_add = false) {
++                                     bool native_float_add = false, bool r64_routing = false) {
      ObjectPool<IR::Inst> pool;
      IR::Block block{pool};
      IR::IREmitter ir{block};
-@@ -98,6 +99,7 @@ std::vector<u32> EmitUntrackedAtomic(IR::Opcode opcode, bool select) {
+@@ -98,12 +99,15 @@ std::vector<u32> EmitUntrackedAtomic(IR::Opcode opcode, bool select) {
      profile.unified_descriptor_binding = true;
      profile.min_ssbo_alignment = 16;
      profile.select_global_memory_buffer = select;
++    profile.r64_global_memory_routing = r64_routing;
 +    profile.support_float32_atomic_add = native_float_add;
      return Backend::SPIRV::EmitSPIRV(profile, program);
  }
  
-@@ -343,3 +345,20 @@ TEST_CASE("Untracked 32-bit global atomics route to their storage buffer",
+ // A compute program with two tracked pointers in constant buffer 0 and, through the pointer loaded
+ // from the first one, untracked accesses of every width, an atomic and a compare-exchange.
+-std::vector<u32> EmitUntrackedAccesses(bool native, u32 min_ssbo_alignment, bool select) {
++std::vector<u32> EmitUntrackedAccesses(bool native, u32 min_ssbo_alignment, bool select,
++                                       bool r64_routing = false) {
+     ObjectPool<IR::Inst> pool;
+     IR::Block block{pool};
+     IR::IREmitter ir{block};
+@@ -154,8 +158,89 @@ std::vector<u32> EmitUntrackedAccesses(bool native, u32 min_ssbo_alignment, bool
+     profile.unified_descriptor_binding = true;
+     profile.min_ssbo_alignment = min_ssbo_alignment;
+     profile.select_global_memory_buffer = select;
++    profile.r64_global_memory_routing = r64_routing;
+     return Backend::SPIRV::EmitSPIRV(profile, program);
+ }
++
++// Checks that every routing helper (a function whose first parameter is the 64-bit address) has
++// r64's form (Profile::r64_global_memory_routing): each candidate buffer's branch ends in a return,
++// one more return gives the fallback, and no value merges in an OpPhi. Returns the number of
++// helpers.
++size_t CheckR64Helpers(const std::vector<u32>& code) {
++    constexpr u32 OpTypeInt = 21;
++    constexpr u32 OpFunction = 54;
++    constexpr u32 OpFunctionParameter = 55;
++    constexpr u32 OpFunctionEnd = 56;
++    constexpr u32 OpPhi = 245;
++    constexpr u32 OpLabel = 248;
++    constexpr u32 OpBranch = 249;
++    constexpr u32 OpBranchConditional = 250;
++    constexpr u32 OpReturn = 253;
++    constexpr u32 OpReturnValue = 254;
++    constexpr u32 OpUnreachable = 255;
++    std::vector<u32> int64_types;
++    for (const auto& ops : Instructions(code, OpTypeInt)) {
++        if (ops[1] == 64) {
++            int64_types.push_back(ops[0]);
++        }
++    }
++    REQUIRE(!int64_types.empty());
++    size_t helpers{};
++    bool in_function{};
++    bool helper{};
++    u32 parameters{};
++    u32 function_id{};
++    u32 label{};
++    u32 returns{};
++    u32 phis{};
++    std::vector<u32> branch_targets;
++    std::vector<std::pair<u32, u32>> terminators;
++    for (size_t i = 5; i < code.size();) {
++        const u32 count = code[i] >> 16;
++        const u32 opcode = code[i] & 0xffff;
++        REQUIRE(count > 0);
++        REQUIRE(i + count <= code.size());
++        if (opcode == OpFunction) {
++            in_function = true;
++            helper = false;
++            function_id = code[i + 2];
++            parameters = returns = phis = 0;
++            branch_targets.clear();
++            terminators.clear();
++        } else if (opcode == OpFunctionParameter) {
++            if (parameters++ == 0) {
++                helper = std::ranges::find(int64_types, code[i + 1]) != int64_types.end();
++            }
++        } else if (opcode == OpLabel) {
++            label = code[i + 1];
++        } else if (opcode == OpPhi) {
++            ++phis;
++        } else if (in_function && opcode >= OpBranch && opcode <= OpUnreachable) {
++            terminators.emplace_back(label, opcode);
++            if (opcode == OpBranchConditional) {
++                branch_targets.push_back(code[i + 2]);
++            }
++            returns += opcode == OpReturn || opcode == OpReturnValue ? 1 : 0;
++        } else if (opcode == OpFunctionEnd) {
++            in_function = false;
++            if (helper) {
++                ++helpers;
++                CAPTURE(function_id);
++                CHECK(!branch_targets.empty());
++                CHECK(returns == branch_targets.size() + 1);
++                CHECK(phis == 0);
++                for (const u32 target : branch_targets) {
++                    const auto block = std::ranges::find(terminators, target,
++                                                         &std::pair<u32, u32>::first);
++                    REQUIRE(block != terminators.end());
++                    CHECK((block->second == OpReturn || block->second == OpReturnValue));
++                }
++            }
++        }
++        i += count;
++    }
++    return helpers;
++}
+ } // namespace
+ 
+ TEST_CASE("Global memory helpers branch per buffer and return only from their last block",
+@@ -343,3 +428,81 @@ TEST_CASE("Untracked 32-bit global atomics route to their storage buffer",
          }
      }
  }
@@ -16319,6 +17380,67 @@ index 91a917672c..7da17b3065 100644
 +        CHECK(Instructions(code, OpAtomicFMinEXT).empty());
 +        CHECK(Instructions(code, OpAtomicCompareExchange).empty());
 +    }
++}
++
++TEST_CASE("r64's global memory helpers return inside each candidate buffer's branch",
++          "[shader_recompiler][global_memory]") {
++    constexpr u32 OpTypePointer = 32;
++    constexpr u32 OpSelect = 169;
++    constexpr u32 OpSwitch = 251;
++    // The flag replaces select_global_memory_buffer, which the pipeline cache never sets with it.
++    for (const bool select : {false, true}) {
++        for (const bool native : {true, false}) {
++            for (const u32 alignment : {16U, 4U}) {
++                CAPTURE(select, native, alignment);
++                std::vector<u32> code;
++                REQUIRE_NOTHROW(code = EmitUntrackedAccesses(native, alignment, select, true));
++                CHECK(CheckR64Helpers(code) >= 7);
++                CHECK(Instructions(code, OpSwitch).empty());
++                std::vector<u32> pointer_types;
++                for (const auto& ops : Instructions(code, OpTypePointer)) {
++                    pointer_types.push_back(ops[0]);
++                }
++                CHECK(std::ranges::none_of(Instructions(code, OpSelect), [&](const auto& ops) {
++                    return std::ranges::find(pointer_types, ops[0]) != pointer_types.end();
++                }));
++            }
++        }
++    }
++}
++
++TEST_CASE("Untracked 32-bit global atomics route through r64's helpers",
++          "[shader_recompiler][global_memory]") {
++    constexpr u32 OpAtomicCompareExchange = 230;
++    constexpr u32 OpAtomicFMinEXT = 5614;
++    constexpr u32 OpAtomicFAddEXT = 6035;
++    const std::array<std::pair<IR::Opcode, u32>, 12> cases{{
++        {IR::Opcode::GlobalAtomicIAdd32, 234},
++        {IR::Opcode::GlobalAtomicSMin32, 236},
++        {IR::Opcode::GlobalAtomicUMin32, 237},
++        {IR::Opcode::GlobalAtomicSMax32, 238},
++        {IR::Opcode::GlobalAtomicUMax32, 239},
++        {IR::Opcode::GlobalAtomicAnd32, 240},
++        {IR::Opcode::GlobalAtomicOr32, 241},
++        {IR::Opcode::GlobalAtomicXor32, 242},
++        {IR::Opcode::GlobalAtomicExchange32, 229},
++        {IR::Opcode::GlobalAtomicInc32, OpAtomicCompareExchange},
++        {IR::Opcode::GlobalAtomicDec32, OpAtomicCompareExchange},
++        {IR::Opcode::GlobalAtomicAddF32, OpAtomicCompareExchange},
++    }};
++    for (const auto& [opcode, atomic] : cases) {
++        CAPTURE(static_cast<u32>(opcode));
++        std::vector<u32> code;
++        REQUIRE_NOTHROW(code = EmitUntrackedAtomic(opcode, false, false, true));
++        CHECK_FALSE(Instructions(code, atomic).empty());
++        CHECK(CheckR64Helpers(code) >= 7);
++    }
++    // EDEN_NX2_NATIVE_FLOAT_ATOMICS: the native add on the routed buffer's F32 view, no CAS loop.
++    std::vector<u32> code;
++    REQUIRE_NOTHROW(code = EmitUntrackedAtomic(IR::Opcode::GlobalAtomicAddF32, false, true, true));
++    CHECK_FALSE(Instructions(code, OpAtomicFAddEXT).empty());
++    CHECK(Instructions(code, OpAtomicFMinEXT).empty());
++    CHECK(Instructions(code, OpAtomicCompareExchange).empty());
++    CHECK(CheckR64Helpers(code) >= 7);
 +}
 diff --git a/src/tests/video_core/global_memory_coherence.cpp b/src/tests/video_core/global_memory_coherence.cpp
 index 206c9cda4b..ca2c4e5344 100644
@@ -38646,6 +39768,154 @@ index 0000000000..c9cc6d4c6d
 +};
 +
 +} // namespace Vulkan
+diff --git a/src/video_core/renderer_vulkan/pipeline_build_trace.h b/src/video_core/renderer_vulkan/pipeline_build_trace.h
+index 6a4a70c504..6f6bdac9b7 100644
+--- a/src/video_core/renderer_vulkan/pipeline_build_trace.h
++++ b/src/video_core/renderer_vulkan/pipeline_build_trace.h
+@@ -2,32 +2,127 @@
+ 
+ #pragma once
+ 
++#include <chrono>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <functional>
+ #include <mutex>
++#include <new>
+ #include <span>
+ #include <thread>
+ 
+ #include "common/common_types.h"
++#include "common/memory_detect.h"
++#include "common/thread.h"
+ 
+ namespace Vulkan {
+ 
++namespace PipelineBuildTrace {
++
++struct State {
++    explicit State(std::FILE* file_) : file{file_} {}
++
++    std::FILE* const file;
++    const std::chrono::steady_clock::time_point opened = std::chrono::steady_clock::now();
++    std::mutex mutex;
++    /// Set by CloseAtExit, which exit() runs before it closes the C streams: nothing writes to
++    /// the file from then on.
++    bool closed{};
++};
++
++/// The open trace, or null when EDEN_NX2_PIPELINE_BUILD_TRACE is unset or the file won't open.
++inline State* Get();
++
++/// Seconds since the trace opened. Read under the mutex, so the times in the file never go down.
++[[nodiscard]] inline double Seconds(const State& trace) {
++    return std::chrono::duration<double>(std::chrono::steady_clock::now() - trace.opened).count();
++}
++
++/// exit()'s hook: the trace's last line, EXIT, names the thread that called exit().
++inline void CloseAtExit() {
++    State* const trace = Get();
++    std::scoped_lock lock{trace->mutex};
++    std::fprintf(trace->file, "EXIT t=%.3f thread=%zu\n", Seconds(*trace),
++                 std::hash<std::thread::id>{}(std::this_thread::get_id()));
++    std::fflush(trace->file);
++    trace->closed = true;
++}
++
++/// The sampler thread: a MEM line at once and then every second, until exit.
++inline void SampleMemory(State* trace) {
++    try {
++        Common::SetCurrentThreadName("PipelineTrace");
++        for (;;) {
++            const Common::ProcessMemoryUsage usage = Common::GetProcessMemoryUsage();
++            {
++                std::scoped_lock lock{trace->mutex};
++                if (trace->closed) {
++                    return;
++                }
++                std::fprintf(trace->file, "MEM t=%.3f commit=%llu ws=%llu system=%llu/%llu\n",
++                             Seconds(*trace), static_cast<unsigned long long>(usage.commit >> 20),
++                             static_cast<unsigned long long>(usage.working_set >> 20),
++                             static_cast<unsigned long long>(usage.system_commit >> 20),
++                             static_cast<unsigned long long>(usage.system_commit_limit >> 20));
++                std::fflush(trace->file);
++            }
++            std::this_thread::sleep_for(std::chrono::seconds{1});
++        }
++    } catch (...) {
++        // The BEGIN and END lines go on without the memory.
++    }
++}
++
++inline State* Open() {
++    const char* const path = std::getenv("EDEN_NX2_PIPELINE_BUILD_TRACE");
++    std::FILE* const file = path != nullptr && *path != '\0' ? std::fopen(path, "a") : nullptr;
++    if (file == nullptr) {
++        return nullptr;
++    }
++    // Never destroyed: builds and the sampler can still run while the process exits.
++    State* const trace = new (std::nothrow) State{file};
++    if (trace == nullptr) {
++        std::fclose(file);
++        return nullptr;
++    }
++    // The sampler runs only with the exit hook. Detached, it delays no exit: the process ends it.
++    if (std::atexit(CloseAtExit) == 0) {
++        try {
++            std::thread{SampleMemory, trace}.detach();
++        } catch (...) {
++            // No MEM lines then.
++        }
++    }
++    return trace;
++}
++
++inline State* Get() {
++    static State* const trace = Open();
++    return trace;
++}
++
++} // namespace PipelineBuildTrace
++
+ /// EDEN_NX2_PIPELINE_BUILD_TRACE=<file>: appends a line before and after every driver pipeline
+ /// build, flushed at once, so the last BEGIN without an END names the shaders a driver crashed on.
+ /// END lines carry the build's wall time (ms=), which includes time spent waiting on other builds.
++/// BEGIN and END lines end with the seconds since the trace opened (t=). A MEM line every second
++/// has the process's commit and working set and the system's commit and its limit, in MiB (0
++/// where the host has none): those lines go on through a hang and climb in a memory blowup.
++/// exit() ends the trace with an EXIT line and its thread (as on BEGIN lines); a trace that just
++/// stops ended without exit(): a crash, a fail-fast, ExitProcess or TerminateProcess.
+ inline void TracePipelineBuild(const char* phase, const char* kind, u64 key_hash,
+                                std::span<const u64> stage_hashes, bool unoptimized,
+                                double elapsed_ms = -1.0) {
+-    static std::FILE* const file = [] {
+-        const char* const path = std::getenv("EDEN_NX2_PIPELINE_BUILD_TRACE");
+-        return path != nullptr && *path != '\0' ? std::fopen(path, "a") : nullptr;
+-    }();
+-    if (file == nullptr) {
++    PipelineBuildTrace::State* const trace = PipelineBuildTrace::Get();
++    if (trace == nullptr) {
++        return;
++    }
++    std::scoped_lock lock{trace->mutex};
++    if (trace->closed) {
+         return;
+     }
+-    static std::mutex mutex;
+-    std::scoped_lock lock{mutex};
++    std::FILE* const file = trace->file;
+     std::fprintf(file, "%s %s pipeline=%016llx thread=%zu%s", phase, kind,
+                  static_cast<unsigned long long>(key_hash),
+                  std::hash<std::thread::id>{}(std::this_thread::get_id()),
+@@ -41,7 +136,7 @@ inline void TracePipelineBuild(const char* phase, const char* kind, u64 key_hash
+     if (elapsed_ms >= 0.0) {
+         std::fprintf(file, " ms=%.1f", elapsed_ms);
+     }
+-    std::fputc('\n', file);
++    std::fprintf(file, " t=%.3f\n", PipelineBuildTrace::Seconds(*trace));
+     std::fflush(file);
+ }
+ 
 diff --git a/src/video_core/renderer_vulkan/pipeline_optimization.h b/src/video_core/renderer_vulkan/pipeline_optimization.h
 index 33a2fdd790..8d88ef329a 100644
 --- a/src/video_core/renderer_vulkan/pipeline_optimization.h
@@ -45798,7 +47068,7 @@ index 60c4746e43..beffa9800f 100644
      std::unique_ptr<Impl> impl;
  };
 diff --git a/src/video_core/renderer_vulkan/vk_pipeline_cache.cpp b/src/video_core/renderer_vulkan/vk_pipeline_cache.cpp
-index e7fdea732b..f17cf2685a 100644
+index e7fdea732b..64e07b8393 100644
 --- a/src/video_core/renderer_vulkan/vk_pipeline_cache.cpp
 +++ b/src/video_core/renderer_vulkan/vk_pipeline_cache.cpp
 @@ -12,6 +12,7 @@
@@ -46073,7 +47343,7 @@ index e7fdea732b..f17cf2685a 100644
  };
  
  size_t GetTotalPipelineWorkers() {
-@@ -529,6 +611,12 @@ size_t GetTotalPipelineWorkers() {
+@@ -529,6 +611,22 @@ size_t GetTotalPipelineWorkers() {
  #endif
  }
  
@@ -46083,10 +47353,44 @@ index e7fdea732b..f17cf2685a 100644
 +    return device.GetDriverVersion() ^ VideoCommon::Nx2Precompile::BuildStampHash();
 +}
 +
++/// LICHII_UPSTREAM_GLOBAL_ROUTING=1: AMD's proprietary driver gets upstream's global memory
++/// routing helpers (#1681) instead of r64's (Profile::r64_global_memory_routing).
++bool UpstreamGlobalRouting() {
++    static const bool enabled = [] {
++        const char* const value = std::getenv("LICHII_UPSTREAM_GLOBAL_ROUTING");
++        return value != nullptr && value[0] == '1';
++    }();
++    return enabled;
++}
++
  } // Anonymous namespace
  
  size_t ComputePipelineCacheKey::Hash() const noexcept {
-@@ -727,6 +815,26 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
+@@ -608,6 +706,11 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
+     if (driver_id == VK_DRIVER_ID_MESA_TURNIP) {
+         supported_subgroup_stages &= ~(1u << static_cast<u32>(Shader::Stage::Geometry));
+     }
++    // r65 died on AMD's proprietary driver while it built Ocarina's boot pipelines, and #1681's
++    // merged routing chain is what merge 5 changed in their SPIR-V. r64's helpers give those
++    // modules r64's SPIR-V again, which the driver has built (and cached) before.
++    const bool amd_proprietary{driver_id == VK_DRIVER_ID_AMD_PROPRIETARY};
++    const bool r64_global_routing{amd_proprietary && !UpstreamGlobalRouting()};
+     profile = Shader::Profile{
+         .supported_spirv = device.SupportedSpirvVersion(),
+         .unified_descriptor_binding = true,
+@@ -682,8 +785,10 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
+             device.IsUniformTexelBufferArrayNonUniformIndexingSupported(),
+         .support_storage_texel_buffer_array_nonuniform_indexing =
+             device.IsStorageTexelBufferArrayNonUniformIndexingSupported(),
+-        .select_global_memory_buffer = driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
++        .select_global_memory_buffer = !r64_global_routing &&
++                                       driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+                                        device.IsNonUniformStorageBufferPointerSupported(),
++        .r64_global_memory_routing = r64_global_routing,
+ 
+         .warp_size_potentially_larger_than_guest = device.IsWarpSizePotentiallyBiggerThanGuest(),
+ 
+@@ -727,6 +832,39 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
      if (profile.support_cooperative_hmma_16x16x16) {
          LOG_INFO(Render_Vulkan, "Guest tensor operations run on 16x16x16 cooperative matrices");
      }
@@ -46110,10 +47414,23 @@ index e7fdea732b..f17cf2685a 100644
 +                     profile.support_descriptor_aliasing ? "" : ", no descriptor aliasing");
 +        }
 +    }
++    {
++        const char* routing{"upstream's helpers, one branch per buffer merged into one return"};
++        if (profile.r64_global_memory_routing) {
++            routing = "r64's helpers, a return in each buffer's branch (AMD proprietary driver; "
++                      "LICHII_UPSTREAM_GLOBAL_ROUTING=1 uses upstream's)";
++        } else if (profile.select_global_memory_buffer) {
++            routing = "upstream's helpers, the buffer picked with OpSelect";
++        }
++        const bool upstream_requested{amd_proprietary && UpstreamGlobalRouting()};
++        g_upstream_global_routing.store(upstream_requested, std::memory_order_relaxed);
++        LOG_INFO(Render_Vulkan, "Global memory routing: {}{}", routing,
++                 upstream_requested ? " (LICHII_UPSTREAM_GLOBAL_ROUTING on)" : "");
++    }
      if (profile.has_broken_mesh_user_sgprs) {
          LOG_INFO(Render_Vulkan, "RADV before 26.2.5: native mesh shaders read the grid size to "
                                  "avoid the stale mesh user SGPR hang");
-@@ -847,6 +955,32 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
+@@ -847,6 +985,32 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
          .driver_threads = driver_threads,
          .name = "VkShader",
      });
@@ -46146,7 +47463,7 @@ index e7fdea732b..f17cf2685a 100644
  }
  
  namespace {
-@@ -894,6 +1028,33 @@ u64 IrBytes(std::span<const Shader::IR::Program> programs) {
+@@ -894,6 +1058,33 @@ u64 IrBytes(std::span<const Shader::IR::Program> programs) {
      return bytes;
  }
  
@@ -46180,7 +47497,7 @@ index e7fdea732b..f17cf2685a 100644
  // A graphics pipeline unused for this many frames (~2.5 min at 60 FPS) may be destroyed.
  constexpr u64 EvictAfterFrames = 9000;
  
-@@ -909,6 +1070,27 @@ size_t KeptPipelines() {
+@@ -909,6 +1100,27 @@ size_t KeptPipelines() {
  #endif
  }
  
@@ -46208,7 +47525,7 @@ index e7fdea732b..f17cf2685a 100644
  /// Destroys the pipelines of `pipelines` (a map or a deque of pairs holding unique_ptrs), telling
  /// the frontend every few hundred that the teardown still moves: tens of thousands of them took
  /// longer than the frontend waited for the emulation thread.
-@@ -937,20 +1119,36 @@ enum class RuntimeBuild : size_t {
+@@ -937,20 +1149,36 @@ enum class RuntimeBuild : size_t {
  };
  
  void ReportRuntimePipeline(RuntimeBuild kind, std::chrono::steady_clock::duration elapsed,
@@ -46246,7 +47563,7 @@ index e7fdea732b..f17cf2685a 100644
      SaveUsedPipelines();
      if (use_vulkan_pipeline_cache && !vulkan_pipeline_cache_filename.empty()) {
          SerializeVulkanPipelineCache(vulkan_pipeline_cache_filename, vulkan_pipeline_cache,
-@@ -964,12 +1162,47 @@ PipelineCache::~PipelineCache() {
+@@ -964,12 +1192,47 @@ PipelineCache::~PipelineCache() {
      Common::NoteShutdownProgress();
      DestroyPipelinesWithProgress(graphics_cache);
      DestroyPipelinesWithProgress(evicted_pipelines);
@@ -46294,7 +47611,7 @@ index e7fdea732b..f17cf2685a 100644
  void PipelineCache::SaveUsedPipelines() {
      used_pipelines_saved = std::chrono::steady_clock::now();
      // A session too short to say what the game uses (a boot to the menu) keeps the old list.
-@@ -992,13 +1225,43 @@ void PipelineCache::SaveUsedPipelines() {
+@@ -992,13 +1255,43 @@ void PipelineCache::SaveUsedPipelines() {
                                VideoCommon::ShaderCacheV2::EncodeUsed(record));
  }
  
@@ -46315,7 +47632,7 @@ index e7fdea732b..f17cf2685a 100644
 +    graphics_key.state.attribute_types = VideoCommon::KeyedAttributeTypes(
 +        vertex_attribute_types, graphics_key.unique_hashes, vertex_attribute_masks);
 +}
- 
++
 +bool PipelineCache::KeepsAttributeTypes(const GraphicsPipeline& pipeline, u64 attribute_types) {
 +    // The masks are those of the last lookup's programs.
 +    const u64 keyed = graphics_key.unique_hashes == pipeline.ShaderHashes()
@@ -46328,7 +47645,7 @@ index e7fdea732b..f17cf2685a 100644
 +    vertex_attribute_types = attribute_types;
 +    return true;
 +}
-+
+ 
 +GraphicsPipeline* PipelineCache::CurrentGraphicsPipeline() {
 +    ++lookup_serial;
      if (!RefreshStages(graphics_key.unique_hashes)) {
@@ -46340,7 +47657,7 @@ index e7fdea732b..f17cf2685a 100644
  
      if (current_pipeline) {
          GraphicsPipeline* const next{current_pipeline->Next(graphics_key)};
-@@ -1028,8 +1291,9 @@ namespace {
+@@ -1028,8 +1321,9 @@ namespace {
  /// Which pointer slots a native program's arguments fill depends on the area (Ocarina of Time's
  /// foliage culling fills different list slots in Hyrule Field and Castle Town), so a translation
  /// rebuilt in one area may lack pointers the first cached one binds. Try first the translations
@@ -46352,7 +47669,7 @@ index e7fdea732b..f17cf2685a 100644
  void OrderComputeTranslations(std::vector<CachedComputeTranslation>& candidates) {
      if (candidates.size() < 2) {
          return;
-@@ -1049,7 +1313,13 @@ void OrderComputeTranslations(std::vector<CachedComputeTranslation>& candidates)
+@@ -1049,7 +1343,13 @@ void OrderComputeTranslations(std::vector<CachedComputeTranslation>& candidates)
          if (lhs_keeps != keeps_first(rhs)) {
              return lhs_keeps;
          }
@@ -46367,7 +47684,7 @@ index e7fdea732b..f17cf2685a 100644
      });
      std::vector<CachedComputeTranslation> ordered;
      ordered.reserve(candidates.size());
-@@ -1340,8 +1610,9 @@ void PipelineCache::StopBackgroundJobs() {
+@@ -1340,8 +1640,9 @@ void PipelineCache::StopBackgroundJobs() {
  static thread_local bool* t_dropped_unmapped_pointer_word{};
  
  std::unique_ptr<GraphicsPipeline> PipelineCache::TranslateCachedGraphics(
@@ -46379,7 +47696,7 @@ index e7fdea732b..f17cf2685a 100644
      std::vector<FileEnvironment> envs;
      Common::UniqueFunction<void, std::istream&, FileEnvironment> read_compute{
          [](std::istream&, FileEnvironment) {
-@@ -1355,6 +1626,10 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::TranslateCachedGraphics(
+@@ -1355,6 +1656,10 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::TranslateCachedGraphics(
              envs = std::move(read);
          }};
      VideoCommon::ReadPipelinePayload(payload, read_compute, read_graphics);
@@ -46390,7 +47707,7 @@ index e7fdea732b..f17cf2685a 100644
      ShaderPools pools;
      boost::container::static_vector<Shader::Environment*, Maxwell::MaxShaderProgram> env_ptrs;
      for (auto& env : envs) {
-@@ -1417,6 +1692,11 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1417,6 +1722,11 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
          std::vector<VideoCommon::PipelineRecord> incomplete;
          std::vector<std::pair<u64, VideoCommon::PipelineRecord>> incomplete_graphics;
          std::vector<VideoCommon::PipelineRecord> copies;
@@ -46402,7 +47719,7 @@ index e7fdea732b..f17cf2685a 100644
      } state;
      if (device.IsKhrPipelineExecutablePropertiesEnabled()) {
          state.statistics = std::make_unique<PipelineStatistics>(device);
-@@ -1527,9 +1807,42 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1527,9 +1837,42 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
      size_t compute_records = 0;
      size_t skipped_pipelines = 0;
      size_t queued_graphics = 0;
@@ -46446,7 +47763,7 @@ index e7fdea732b..f17cf2685a 100644
      const size_t kept_pipelines = KeptPipelines();
      const size_t boot_used =
          used_pipelines.empty() ? MaxPipelinesWithoutUsedList : used_pipelines.size();
-@@ -1568,6 +1881,7 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1568,6 +1911,7 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
          const size_t index = records.size();
          records.push_back(&record);
          if (!KeyFitsDevice(*key)) {
@@ -46454,7 +47771,7 @@ index e7fdea732b..f17cf2685a 100644
              continue;
          }
          const u64 hash = key->Hash();
-@@ -1698,10 +2012,21 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1698,10 +2042,21 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
                      -> VideoCommon::ShaderDriverStage {
                      std::unique_ptr<GraphicsPipeline> pipeline;
                      bool incomplete{};
@@ -46478,7 +47795,7 @@ index e7fdea732b..f17cf2685a 100644
                          } catch (const std::ios_base::failure& e) {
                              unreadable(record, e.what());
                          }
-@@ -1715,12 +2040,18 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1715,12 +2070,18 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
                          built_one();
                          return {};
                      }
@@ -46499,7 +47816,7 @@ index e7fdea732b..f17cf2685a 100644
                          built_one();
                      };
                  },
-@@ -1732,10 +2063,22 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1732,10 +2093,22 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
      // With the precache, the prebuild starts after it.
      const size_t deferred_pipelines = prebuild.size();
      const auto start_prebuild = [&] {
@@ -46522,7 +47839,7 @@ index e7fdea732b..f17cf2685a 100644
                      if (record.payload.empty()) {
                          auto read = CacheV2::ReadRecordPayload(
                              cache_v2->Writer().File(), RecordKind::Graphics, record.record_key,
-@@ -1769,12 +2112,41 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1769,12 +2142,41 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
                   "Unused graphics pipelines are destroyed only past {} built{}", kept_pipelines,
                   build_all ? "; all cached ones are built at boot up to that" : "");
      }
@@ -46564,7 +47881,7 @@ index e7fdea732b..f17cf2685a 100644
      {
          const size_t used_sessions = std::min<size_t>(
              static_cast<size_t>(std::ranges::count_if(
-@@ -1821,18 +2193,11 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1821,18 +2223,11 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
      records.clear();
      log.reset();
  
@@ -46588,7 +47905,7 @@ index e7fdea732b..f17cf2685a 100644
          last_flush = std::chrono::steady_clock::now();
      }
      if (state.statistics) {
-@@ -1857,6 +2222,7 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1857,6 +2252,7 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
      }
      if (precache && !stop_loading.stop_requested()) {
          PrecacheShaders(title_id, stop_loading, callback);
@@ -46596,7 +47913,7 @@ index e7fdea732b..f17cf2685a 100644
      }
      if (stop_loading.stop_requested()) {
          scheduled_prebuild.reset();
-@@ -1868,9 +2234,94 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
+@@ -1868,16 +2264,102 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
      if (compact) {
          scheduled_prebuild->AfterTranslations([this] { cache_v2->Writer().Compact(); });
      }
@@ -46690,17 +48007,40 @@ index e7fdea732b..f17cf2685a 100644
 +
  /// The precache marker's variant: the build's SPIR-V emission stamp and the settings that change
  /// what the driver gets for a precache build. Resolution scaling bakes the scale into the
- /// rescaling code of the shaders; the loop safety checks and the bloom fix change the SPIR-V; the
-@@ -1897,7 +2348,7 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+-/// rescaling code of the shaders; the loop safety checks and the bloom fix change the SPIR-V; the
+-/// debug setting adds a create flag.
+-u64 WarmVariant() {
++/// rescaling code of the shaders; the loop safety checks, the bloom fix and the global memory
++/// routing helpers (LICHII_UPSTREAM_GLOBAL_ROUTING) change the SPIR-V; the debug setting adds a
++/// create flag.
++u64 WarmVariant(const Shader::Profile& profile) {
+     const auto& resolution = Settings::values.resolution_info;
+-    const std::array<u64, 7> inputs{
++    const std::array<u64, 8> inputs{
+         VideoCommon::ShaderWarm::EmissionStamp(),
+         resolution.active ? 1ULL : 0ULL,
+         resolution.up_scale,
+@@ -1885,6 +2367,7 @@ u64 WarmVariant() {
+         Settings::values.disable_shader_loop_safety_checks.GetValue() ? 1ULL : 0ULL,
+         Settings::values.fix_bloom_effects.GetValue() ? 1ULL : 0ULL,
+         Settings::values.renderer_debug.GetValue() ? 1ULL : 0ULL,
++        profile.r64_global_memory_routing ? 1ULL : 0ULL,
+     };
+     return Common::CityHash64(reinterpret_cast<const char*>(inputs.data()), sizeof(inputs));
+ }
+@@ -1897,8 +2380,9 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
      const std::filesystem::path warm_file = ShaderWarm::ComputeWarmPath(title_id);
      const std::string path = Common::FS::PathToUTF8String(warm_file);
      const auto stamp = [&](u64 entries) {
 -        return ShaderWarm::CurrentWarmStamp(warm_file, entries, device.GetDriverVersion(),
+-                                            device.GetDeviceID(), CACHE_VERSION, WarmVariant());
 +        return ShaderWarm::CurrentWarmStamp(warm_file, entries, PrecacheDriverStamp(device),
-                                             device.GetDeviceID(), CACHE_VERSION, WarmVariant());
++                                            device.GetDeviceID(), CACHE_VERSION,
++                                            WarmVariant(profile));
      };
      // Compute programs of the precache file, unless a matching marker says they were built.
-@@ -1909,7 +2360,8 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+     size_t file_entries = 0;
+@@ -1909,7 +2393,8 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
      if (!std::filesystem::exists(warm_file, ec)) {
          LOG_INFO(Render_Vulkan, "Shader precache: no precache file at {}", path);
      } else if (current && marker && marker->Matches(*current)) {
@@ -46710,7 +48050,7 @@ index e7fdea732b..f17cf2685a 100644
      } else {
          // Read the whole file here (its own reader: the disk cache loader deletes files it rejects).
          try {
-@@ -1952,13 +2404,15 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+@@ -1952,13 +2437,15 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
                  }
                  const u64 cpu_bytes = TranslationBytes(env.MemorySize());
                  jobs.push_back({
@@ -46731,7 +48071,7 @@ index e7fdea732b..f17cf2685a 100644
                          if (!pipeline) {
                              return {};
                          }
-@@ -1968,6 +2422,7 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+@@ -1968,6 +2455,7 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
                          };
                      },
                      .cpu_bytes = cpu_bytes,
@@ -46739,7 +48079,7 @@ index e7fdea732b..f17cf2685a 100644
                  });
              }
              compute_pending = true;
-@@ -1977,6 +2432,9 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+@@ -1977,6 +2465,9 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
              file_entries = 0;
          }
      }
@@ -46749,7 +48089,7 @@ index e7fdea732b..f17cf2685a 100644
      if (jobs.empty() && !compute_pending) {
          LOG_INFO(Render_Vulkan, "Shader precache: nothing to precache");
          return;
-@@ -1984,27 +2442,95 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+@@ -1984,27 +2475,95 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
  
      const auto begin = std::chrono::steady_clock::now();
      const size_t num_threads = GetTotalPipelineWorkers();
@@ -46852,7 +48192,7 @@ index e7fdea732b..f17cf2685a 100644
                              try {
                                  build = translate();
                              } catch (const std::exception& e) {
-@@ -2013,22 +2539,48 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+@@ -2013,22 +2572,48 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
                          }
                          translate = {};
                          if (!build) {
@@ -46904,7 +48244,7 @@ index e7fdea732b..f17cf2685a 100644
              if (stop_loading.stop_requested() || ShaderWarm::TakeSkipWarm()) {
                  // The builds not started are dropped; the running ones end first.
                  shader_jobs->Cancel(batch);
-@@ -2038,20 +2590,55 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+@@ -2038,20 +2623,55 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
              if (callback) {
                  callback(VideoCore::LoadCallbackStage::Warm, done, jobs.size());
              }
@@ -46961,7 +48301,7 @@ index e7fdea732b..f17cf2685a 100644
      }
      const double seconds =
          std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
-@@ -2063,6 +2650,313 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
+@@ -2063,6 +2683,313 @@ void PipelineCache::PrecacheShaders(u64 title_id, std::stop_token stop_loading,
          "precache_end", fmt::format("built={} seconds={:.3f}", total_built, seconds));
  }
  
@@ -47275,7 +48615,7 @@ index e7fdea732b..f17cf2685a 100644
  void PipelineCache::QueueVulkanPipelineCacheFlush() {
      if (!use_vulkan_pipeline_cache || vulkan_pipeline_cache_filename.empty() ||
          !device.CanReadPipelineCacheDuringBuilds()) {
-@@ -2078,36 +2972,49 @@ void PipelineCache::QueueVulkanPipelineCacheFlush() {
+@@ -2078,36 +3005,49 @@ void PipelineCache::QueueVulkanPipelineCacheFlush() {
      if (last_flush.time_since_epoch().count() != 0 && now - last_flush < interval) {
          return;
      }
@@ -47294,9 +48634,8 @@ index e7fdea732b..f17cf2685a 100644
 -        flush_in_flight.store(false, std::memory_order_release);
 -    });
 +    QueueVulkanPipelineCacheSave(false);
- }
- 
--void PipelineCache::QueueVulkanPipelineCacheSave() {
++}
++
 +bool PipelineCache::VulkanPipelineCacheSaveDue(std::chrono::steady_clock::time_point& last) const {
 +    // As QueueVulkanPipelineCacheFlush: at most once a second per MiB the cache holds, as each
 +    // write copies all of it.
@@ -47309,8 +48648,9 @@ index e7fdea732b..f17cf2685a 100644
 +    }
 +    last = now;
 +    return true;
-+}
-+
+ }
+ 
+-void PipelineCache::QueueVulkanPipelineCacheSave() {
 +void PipelineCache::QueueVulkanPipelineCacheSave(bool again_if_busy) {
      if (!use_vulkan_pipeline_cache || vulkan_pipeline_cache_filename.empty() ||
          !device.CanReadPipelineCacheDuringBuilds()) {
@@ -47344,7 +48684,7 @@ index e7fdea732b..f17cf2685a 100644
      });
  }
  
-@@ -2257,23 +3164,42 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
+@@ -2257,23 +3197,42 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
          }
          if (!pipeline) {
              const auto keep = evicted_pointer_slots.Take(graphics_key.Hash());
@@ -47388,7 +48728,7 @@ index e7fdea732b..f17cf2685a 100644
      constexpr auto save_interval = std::chrono::seconds{15};
      if (used_this_session.insert(pipeline.get()).second &&
          std::chrono::steady_clock::now() - used_pipelines_saved > save_interval) {
-@@ -2287,8 +3213,127 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
+@@ -2287,8 +3246,127 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
      return BuiltPipeline(current_pipeline);
  }
  
@@ -47516,7 +48856,7 @@ index e7fdea732b..f17cf2685a 100644
      native_wait_budget_us =
          static_cast<s64>(Settings::values.native_pipeline_wait_ms.GetValue()) * 1000;
      while (!evicted_pipelines.empty() && scheduler.IsFree(evicted_pipelines.front().first)) {
-@@ -2353,7 +3398,7 @@ void PipelineCache::EvictUnusedPipelines() {
+@@ -2353,7 +3431,7 @@ void PipelineCache::EvictUnusedPipelines() {
          for (const size_t index : PipelinesToEvict(last_uses, built, kept)) {
              evict.push_back(keys[index]);
          }
@@ -47525,7 +48865,7 @@ index e7fdea732b..f17cf2685a 100644
          size_t kept_prebuilt = 0;
          for (const auto& [key, pipeline] : graphics_cache) {
              if (pipeline == nullptr || pipeline.get() == current_pipeline ||
-@@ -2378,9 +3423,12 @@ void PipelineCache::EvictUnusedPipelines() {
+@@ -2378,9 +3456,12 @@ void PipelineCache::EvictUnusedPipelines() {
          }
          evicted_hashes.insert(it->first.Hash());
          evicted_pointer_slots.Remember(it->first.Hash(), it->second->MappedPointers());
@@ -47541,7 +48881,7 @@ index e7fdea732b..f17cf2685a 100644
          evicted_pipelines.emplace_back(tick, std::move(it->second));
          graphics_cache.erase(it);
      }
-@@ -2398,98 +3446,215 @@ void PipelineCache::EvictUnusedPipelines() {
+@@ -2398,98 +3479,215 @@ void PipelineCache::EvictUnusedPipelines() {
      translated_again = 0;
  }
  
@@ -47827,7 +49167,7 @@ index e7fdea732b..f17cf2685a 100644
  std::unique_ptr<GraphicsPipeline> PipelineCache::RebuildGraphicsPipeline(KeptGraphicsStages kept) {
      std::array<const Shader::Info*, Maxwell::MaxShaderStage> infos{};
      for (size_t stage = 0; stage < infos.size(); ++stage) {
-@@ -2522,7 +3687,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2522,7 +3720,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
      ShaderPools& pools, const GraphicsPipelineCacheKey& key,
      std::span<Shader::Environment* const> envs, PipelineStatistics* statistics,
      bool build_in_parallel, std::shared_ptr<ShaderPools> emit_pools,
@@ -47836,7 +49176,7 @@ index e7fdea732b..f17cf2685a 100644
      auto hash = key.Hash();
      LOG_DEBUG(Render_Vulkan, "{:#016x}", hash);
      // Declared before the programs, whose IR they hold
-@@ -2612,6 +3777,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2612,6 +3810,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
              mesh_unsupported = true;
          }
  
@@ -47845,7 +49185,7 @@ index e7fdea732b..f17cf2685a 100644
          const auto translate = [&] {
              if (translated[index]) {
                  return translated[index]->Take();
-@@ -2633,6 +3800,9 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2633,6 +3833,9 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
              // one stage.
              Shader::Optimization::LimitSampledTextureArrays(programs[index], host_info);
          }
@@ -47855,7 +49195,7 @@ index e7fdea732b..f17cf2685a 100644
  
          if (device.GetDriverID() != VK_DRIVER_ID_NVIDIA_PROPRIETARY && Shader::Optimization::HasBrokenPattern(programs[index])) {
              LOG_WARNING(Render_Vulkan, "0x{:016x}: Skipping shader with known issues", key.unique_hashes[index]);
-@@ -2859,6 +4029,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2859,6 +4062,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
      std::array<std::vector<u32>, Maxwell::MaxShaderStage> stage_spirv;
      std::array<std::optional<Shader::RuntimeInfo>, Maxwell::MaxShaderStage> deferred_runtime_infos;
      std::array<std::vector<u32>, Maxwell::MaxShaderStage> reference_spirv;
@@ -47863,7 +49203,7 @@ index e7fdea732b..f17cf2685a 100644
  
      const Shader::IR::Program* previous_stage{};
      Shader::Backend::Bindings binding;
-@@ -2925,6 +4096,35 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2925,6 +4129,35 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                             static_cast<std::streamsize>(code.size() * sizeof(u32)));
              }
          }
@@ -47899,7 +49239,7 @@ index e7fdea732b..f17cf2685a 100644
          if (defer_emission) {
              deferred_runtime_infos[stage_index] = runtime_info;
              if (VideoCommon::Nx2Perf::Verify()) {
-@@ -2941,6 +4141,12 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2941,6 +4174,12 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
          }
          previous_stage = &program;
      }
@@ -47912,7 +49252,7 @@ index e7fdea732b..f17cf2685a 100644
      std::function<std::array<std::vector<u32>, Maxwell::MaxShaderStage>()> emit_stages;
      if (defer_emission) {
          auto job = std::make_shared<DeferredStages>();
-@@ -2951,6 +4157,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2951,6 +4190,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
          job->programs = std::move(programs);
          job->runtime_infos = std::move(deferred_runtime_infos);
          job->reference_spirv = std::move(reference_spirv);
@@ -47920,7 +49260,7 @@ index e7fdea732b..f17cf2685a 100644
          for (size_t stage = 0; stage < infos.size(); ++stage) {
              if (infos[stage]) {
                  infos[stage] = &job->programs[stage + 1].info;
-@@ -2961,7 +4168,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2961,7 +4201,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
              std::array<std::vector<u32>, Maxwell::MaxShaderStage> spirv;
              Shader::Backend::Bindings stage_binding;
              for (size_t stage = 0; stage < spirv.size(); ++stage) {
@@ -47933,7 +49273,7 @@ index e7fdea732b..f17cf2685a 100644
                      spirv[stage] =
                          EmitStageSpirv(device, profile, *job->runtime_infos[stage],
                                         job->programs[stage + 1], stage_binding, hashes[stage + 1],
-@@ -2997,6 +4208,20 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -2997,6 +4241,20 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
  
  } catch (const Shader::Exception& exception) {
      auto hash = key.Hash();
@@ -47954,7 +49294,7 @@ index e7fdea732b..f17cf2685a 100644
      size_t env_index{0};
      for (size_t index = 0; index < Maxwell::MaxShaderProgram; ++index) {
          if (key.unique_hashes[index] == 0) {
-@@ -3036,6 +4261,7 @@ struct {
+@@ -3036,6 +4294,7 @@ struct {
      std::mutex mutex;
      RuntimeBuildCounts window;
      RuntimeBuildCounts session;
@@ -47962,7 +49302,7 @@ index e7fdea732b..f17cf2685a 100644
      std::chrono::nanoseconds translation_wait{};
      std::chrono::nanoseconds stage_translation{};
      std::chrono::steady_clock::time_point window_begin = std::chrono::steady_clock::now();
-@@ -3063,7 +4289,8 @@ std::string FormatRuntimeBuilds(const RuntimeBuildCounts& counts) {
+@@ -3063,7 +4322,8 @@ std::string FormatRuntimeBuilds(const RuntimeBuildCounts& counts) {
  // and every one over 100 ms are logged, and the totals by class every 10 s and for the session, to
  // tell what still builds mid-game and why.
  void ReportRuntimePipeline(RuntimeBuild kind, std::chrono::steady_clock::duration elapsed,
@@ -47972,7 +49312,7 @@ index e7fdea732b..f17cf2685a 100644
                             std::chrono::nanoseconds stage_translation) {
      auto& builds = runtime_builds;
      std::scoped_lock lock{builds.mutex};
-@@ -3074,15 +4301,32 @@ void ReportRuntimePipeline(RuntimeBuild kind, std::chrono::steady_clock::duratio
+@@ -3074,15 +4334,32 @@ void ReportRuntimePipeline(RuntimeBuild kind, std::chrono::steady_clock::duratio
      }
      builds.slow += elapsed > std::chrono::milliseconds{100} ? 1 : 0;
      builds.longest = std::max(builds.longest, elapsed);
@@ -48007,7 +49347,7 @@ index e7fdea732b..f17cf2685a 100644
      }
      const auto now = std::chrono::steady_clock::now();
      if (now - builds.window_begin <= std::chrono::seconds{10}) {
-@@ -3103,13 +4347,17 @@ void ReportRuntimePipeline(RuntimeBuild kind, std::chrono::steady_clock::duratio
+@@ -3103,13 +4380,17 @@ void ReportRuntimePipeline(RuntimeBuild kind, std::chrono::steady_clock::duratio
          ", {:.1f} ms on the GPU thread waiting for {:.1f} ms of graphics "
          "stage translation on workers, {:.1f} ms compute SPIR-V on workers",
          Ms(builds.translation_wait), Ms(builds.stage_translation), Ms(take(runtime_spirv_ns[2])));
@@ -48027,7 +49367,7 @@ index e7fdea732b..f17cf2685a 100644
      builds.translation_wait = {};
      builds.stage_translation = {};
      builds.window_begin = now;
-@@ -3133,6 +4381,7 @@ void LogRuntimePipelineTotals() {
+@@ -3133,6 +4414,7 @@ void LogRuntimePipelineTotals() {
      }
      builds.window = {};
      builds.session = {};
@@ -48035,7 +49375,7 @@ index e7fdea732b..f17cf2685a 100644
      builds.translation_wait = {};
      builds.stage_translation = {};
      builds.window_begin = std::chrono::steady_clock::now();
-@@ -3140,6 +4389,48 @@ void LogRuntimePipelineTotals() {
+@@ -3140,6 +4422,48 @@ void LogRuntimePipelineTotals() {
      builds.slow = 0;
      builds.longest = {};
  }
@@ -48084,7 +49424,7 @@ index e7fdea732b..f17cf2685a 100644
  } // Anonymous namespace
  
  void PipelineCache::WarnKeptPointer(size_t program, u64 slot) const {
-@@ -3188,26 +4479,35 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -3188,26 +4512,35 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                                : disk_pipelines.contains(graphics_key.Hash())
                                    ? RuntimeBuild::Recorded
                                    : RuntimeBuild::New;
@@ -48129,7 +49469,7 @@ index e7fdea732b..f17cf2685a 100644
      if (keep_pointers) {
          for (size_t index = 0; index < Maxwell::MaxShaderProgram; ++index) {
              if (graphics_key.unique_hashes[index] == 0) {
-@@ -3221,36 +4521,17 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -3221,36 +4554,17 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
      }
  
      // Shader cache v2: two or more stages translate at once on the shader jobs' CPU workers while
@@ -48173,7 +49513,7 @@ index e7fdea732b..f17cf2685a 100644
      }
  
      // Native programs emit their SPIR-V in the pipeline's job instead of here
-@@ -3266,13 +4547,20 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -3266,13 +4580,20 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
      if (!pipeline || pipeline_cache_filename.empty()) {
          return pipeline;
      }
@@ -48198,7 +49538,7 @@ index e7fdea732b..f17cf2685a 100644
          boost::container::static_vector<const GenericEnvironment*, Maxwell::MaxShaderProgram>
              env_ptrs;
          for (size_t index = 0; index < Maxwell::MaxShaderProgram; ++index) {
-@@ -3289,7 +4577,320 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
+@@ -3289,7 +4610,320 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
          }
      });
      QueueVulkanPipelineCacheFlush();
@@ -48520,7 +49860,7 @@ index e7fdea732b..f17cf2685a 100644
  }
  
  ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(const ComputePipelineCacheKey& key,
-@@ -3347,7 +4948,7 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(const ComputePipe
+@@ -3347,7 +4981,7 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(const ComputePipe
  ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
      ShaderPools& pools, const ComputePipelineCacheKey& key, Shader::Environment& env,
      PipelineStatistics* statistics, bool build_in_parallel,
@@ -48529,7 +49869,7 @@ index e7fdea732b..f17cf2685a 100644
      SCOPE_EXIT {
          if (emit_pools) {
              ReturnPools(std::move(emit_pools));
-@@ -3382,6 +4983,10 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
+@@ -3382,6 +5016,10 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
                      max_shared_memory / 1024);
          program.shared_memory_size = max_shared_memory;
      }
@@ -48540,7 +49880,7 @@ index e7fdea732b..f17cf2685a 100644
      std::unique_ptr<ComputePipeline> pipeline;
      const u64 ir_bytes = emit_pools ? IrBytes(std::span(&program, 1)) : 0;
      if (auto ir_reservation = emit_pools ? queued_ir.TryReserve(ir_bytes) : nullptr) {
-@@ -3407,9 +5012,9 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
+@@ -3407,9 +5045,9 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
          pipeline = std::make_unique<ComputePipeline>(
              device, scheduler, vulkan_pipeline_cache, pipeline_binaries.get(), hash,
              descriptor_pool, guest_descriptor_queue, descriptor_buffer_ring,
@@ -48552,7 +49892,7 @@ index e7fdea732b..f17cf2685a 100644
      } else {
          std::vector<u8> kept_spirv;
          vk::ShaderModule module{
-@@ -3425,8 +5030,9 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
+@@ -3425,8 +5063,9 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
          pipeline = std::make_unique<ComputePipeline>(
              device, scheduler, vulkan_pipeline_cache, pipeline_binaries.get(), hash,
              descriptor_pool, guest_descriptor_queue, descriptor_buffer_ring,
@@ -48564,7 +49904,7 @@ index e7fdea732b..f17cf2685a 100644
      }
      return {.pipeline = std::move(pipeline),
              .null_pointer_slots = env.IsNativeProgram() ? env.NullStoragePointerSlots()
-@@ -3435,8 +5041,15 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
+@@ -3435,8 +5074,15 @@ ComputePipelineCacheEntry PipelineCache::CreateComputePipeline(
                  env.IsNativeProgram() ? env.MappedStoragePointerKeys() : std::vector<u64>{}};
  
  } catch (const Shader::Exception& exception) {
@@ -48583,7 +49923,7 @@ index e7fdea732b..f17cf2685a 100644
  }
  
 diff --git a/src/video_core/renderer_vulkan/vk_pipeline_cache.h b/src/video_core/renderer_vulkan/vk_pipeline_cache.h
-index ac8c1d98e5..8c0a49a1d4 100644
+index ac8c1d98e5..660c307b84 100644
 --- a/src/video_core/renderer_vulkan/vk_pipeline_cache.h
 +++ b/src/video_core/renderer_vulkan/vk_pipeline_cache.h
 @@ -11,13 +11,17 @@
@@ -48612,7 +49952,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
  #include "video_core/renderer_vulkan/fixed_pipeline_state.h"
  #include "video_core/renderer_vulkan/vk_buffer_cache.h"
  #include "video_core/renderer_vulkan/vk_compute_pipeline.h"
-@@ -64,6 +69,10 @@ namespace Vulkan {
+@@ -64,6 +69,14 @@ namespace Vulkan {
  
  using Maxwell = Tegra::Engines::Maxwell3D::Regs;
  
@@ -48620,10 +49960,14 @@ index ac8c1d98e5..8c0a49a1d4 100644
 +/// (EDEN_NX2_NATIVE_FLOAT_ATOMICS=1 on a device that has them), for the boot line of switches
 +inline std::atomic<bool> g_native_float_atomics{false};
 +
++/// Whether LICHII_UPSTREAM_GLOBAL_ROUTING=1 gave AMD's proprietary driver upstream's global memory
++/// routing helpers instead of r64's, for the boot line of switches
++inline std::atomic<bool> g_upstream_global_routing{false};
++
  struct ComputePipelineCacheKey {
      u64 unique_hash;
      u32 shared_memory_size;
-@@ -102,6 +111,9 @@ class Device;
+@@ -102,6 +115,9 @@ class Device;
  class PipelineStatistics;
  class RenderPassCache;
  class Scheduler;
@@ -48633,7 +49977,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
  
  using VideoCommon::ShaderInfo;
  
-@@ -125,6 +137,12 @@ struct ComputePipelineCacheEntry {
+@@ -125,6 +141,12 @@ struct ComputePipelineCacheEntry {
                                         const ComputePipelineCacheKey& key) const;
  };
  
@@ -48646,7 +49990,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
  class PipelineCache : public VideoCommon::ShaderCache {
  public:
      explicit PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_, const Device& device,
-@@ -137,6 +155,27 @@ public:
+@@ -137,6 +159,27 @@ public:
  
      [[nodiscard]] GraphicsPipeline* CurrentGraphicsPipeline();
  
@@ -48674,7 +50018,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      void TickFrame();
  
      [[nodiscard]] ComputePipeline* CurrentComputePipeline(u64& native_key);
-@@ -151,6 +190,43 @@ private:
+@@ -151,6 +194,43 @@ private:
      /// may be skipped while it builds (asynchronous shaders, CanDiscardPendingDraw).
      [[nodiscard]] GraphicsPipeline* BuiltPipeline(GraphicsPipeline* pipeline) noexcept;
  
@@ -48718,7 +50062,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      /// With `keep_pointers`, the slots an evicted pipeline of this key bound stay storage buffer
      /// pointers whatever they hold now. `evicted`: a pipeline of this key was evicted.
      std::unique_ptr<GraphicsPipeline> CreateGraphicsPipeline(
-@@ -159,6 +235,39 @@ private:
+@@ -159,6 +239,39 @@ private:
      /// Builds the current key's pipeline again from what an evicted one kept, without translating
      std::unique_ptr<GraphicsPipeline> RebuildGraphicsPipeline(KeptGraphicsStages kept);
  
@@ -48758,7 +50102,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      /// Logs a kept pointer slot (an index of keep_pointers) that this translation would otherwise
      /// have classified as no pointer: null, unmapped, or out of range right now.
      void WarnKeptPointer(size_t program, u64 slot) const;
-@@ -179,7 +288,7 @@ private:
+@@ -179,7 +292,7 @@ private:
          ShaderPools& pools, const GraphicsPipelineCacheKey& key,
          std::span<Shader::Environment* const> envs, PipelineStatistics* statistics,
          bool build_in_parallel, std::shared_ptr<ShaderPools> emit_pools = nullptr,
@@ -48767,7 +50111,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
  
      /// Released IR pools for a build, or new ones
      [[nodiscard]] std::shared_ptr<ShaderPools> TakeSparePools();
-@@ -197,12 +306,16 @@ private:
+@@ -197,12 +310,16 @@ private:
      /// Builds the pipeline as CreateGraphicsPipeline does. With `emit_pools`, which `pools` must
      /// be, the SPIR-V is emitted by the CPU stage of the pipeline's job, which takes the pools and
      /// the program.
@@ -48785,7 +50129,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
  
      /// Where CreateGraphicsPipeline and CreateComputePipeline build; `cpu_bytes` estimates the
      /// IR a deferred emission holds
-@@ -223,11 +336,12 @@ private:
+@@ -223,11 +340,12 @@ private:
  
      /// Reads a v2 graphics record and translates its pipeline, left for Build(). Null when it
      /// doesn't translate, `incomplete` when the record lacks a value the translation reads.
@@ -48803,7 +50147,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
  
      /// Cancels the v2 prebuild and waits for its running stages
      void StopBackgroundJobs();
-@@ -240,17 +354,22 @@ private:
+@@ -240,17 +358,22 @@ private:
  
      void QueueVulkanPipelineCacheFlush();
  
@@ -48831,7 +50175,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      };
  
      /// Shader precache before the game starts (precache_shaders), on every CPU thread: the compute
-@@ -262,6 +381,34 @@ private:
+@@ -262,6 +385,34 @@ private:
      void PrecacheShaders(u64 title_id, std::stop_token stop_loading,
                           const VideoCore::DiskResourceLoadCallback& callback);
  
@@ -48866,7 +50210,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      const Device& device;
      Scheduler& scheduler;
      DescriptorPool& descriptor_pool;
-@@ -283,6 +430,7 @@ private:
+@@ -283,6 +434,7 @@ private:
      std::optional<std::chrono::steady_clock::time_point> prebuild_load_begin;
  
      GraphicsPipelineCacheKey graphics_key{};
@@ -48874,7 +50218,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      GraphicsPipeline* current_pipeline{};
  
      /// Destroys graphics pipelines unused for a while, once the GPU is done with them.
-@@ -293,6 +441,12 @@ private:
+@@ -293,6 +445,12 @@ private:
      s64 native_wait_budget_us{8000};
      s64 native_wait_used_us{}; ///< Budget spent since the last 10 s log line.
      std::deque<std::pair<u64, std::unique_ptr<GraphicsPipeline>>> evicted_pipelines; ///< (tick, pipeline)
@@ -48887,7 +50231,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      std::unordered_set<u64> used_and_evicted; ///< Key hashes of pipelines used this session, evicted since
      std::unordered_set<u64> evicted_hashes;   ///< Key hashes of evicted pipelines not created again
      VideoCommon::EvictedPointerSlots evicted_pointer_slots;
-@@ -308,6 +462,9 @@ private:
+@@ -308,6 +466,9 @@ private:
      ::Common::unordered_map<GraphicsPipelineCacheKey, std::unique_ptr<GraphicsPipeline>> graphics_cache;
  
      ShaderPools main_pools;
@@ -48897,7 +50241,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      std::mutex spare_pools_mutex;
      std::vector<std::shared_ptr<ShaderPools>> spare_pools;
  
-@@ -320,6 +477,12 @@ private:
+@@ -320,6 +481,12 @@ private:
      /// (used_pipelines) are built at boot; the rest are built when first needed, and not stored
      /// again. Each built pipeline holds driver memory (title 1: 6.5k cached, a quarter used).
      std::unordered_set<u64> disk_pipelines;
@@ -48910,7 +50254,7 @@ index ac8c1d98e5..8c0a49a1d4 100644
      std::unordered_map<u64, u8> used_pipelines; ///< Key hash -> sessions since it was last used
      std::unordered_set<const GraphicsPipeline*> used_this_session;
      std::chrono::steady_clock::time_point used_pipelines_saved{};
-@@ -338,12 +501,50 @@ private:
+@@ -338,12 +505,50 @@ private:
      std::chrono::steady_clock::time_point last_flush{};
      std::atomic<size_t> last_cache_size{};
      std::atomic_bool flush_in_flight{};
@@ -55814,6 +57158,33 @@ index 5c618249dd..f984471845 100644
  };
  
  class ComputeEnvironment final : public GenericEnvironment {
+diff --git a/src/video_core/shader_jobs.cpp b/src/video_core/shader_jobs.cpp
+index 9f1891a589..56d53dd73c 100644
+--- a/src/video_core/shader_jobs.cpp
++++ b/src/video_core/shader_jobs.cpp
+@@ -11,6 +11,10 @@
+ #include "common/thread.h"
+ #include "video_core/shader_jobs.h"
+ 
++#ifdef _WIN32
++#include "common/windows/crash_handler.h"
++#endif
++
+ namespace VideoCommon {
+ 
+ struct ShaderJobBatchState {
+@@ -160,6 +164,11 @@ ShaderJobScheduler::ShaderJobScheduler(const ShaderJobConfig& config)
+             Common::SetCurrentThreadName(name.c_str());
+             Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
+             Common::SetCurrentThreadToBackgroundWork();
++#ifdef _WIN32
++            // Shaders are translated and the driver compiles pipelines here, deep enough to
++            // overflow: the crash handler still has to be reached then.
++            Common::Windows::GuaranteeStackForCrashReport();
++#endif
+             Worker(driver);
+         });
+     }};
 diff --git a/src/video_core/texture_cache/image_base.h b/src/video_core/texture_cache/image_base.h
 index 7d0f170fcd..5cc3868fac 100644
 --- a/src/video_core/texture_cache/image_base.h
@@ -59160,7 +60531,7 @@ index 5509d2b03c..c5891be0d6 100644
 +
  } // namespace Tegra::Texture
 diff --git a/src/video_core/video_core.cpp b/src/video_core/video_core.cpp
-index ac475126e1..b8fb2b2369 100644
+index ac475126e1..3c9f1c358f 100644
 --- a/src/video_core/video_core.cpp
 +++ b/src/video_core/video_core.cpp
 @@ -4,21 +4,41 @@
@@ -59218,7 +60589,7 @@ index ac475126e1..b8fb2b2369 100644
  
  namespace {
  
-@@ -50,6 +75,84 @@ std::unique_ptr<VideoCore::RendererBase> CreateRenderer(Core::System& system, Co
+@@ -50,6 +75,88 @@ std::unique_ptr<VideoCore::RendererBase> CreateRenderer(Core::System& system, Co
      }
  }
  
@@ -59227,7 +60598,7 @@ index ac475126e1..b8fb2b2369 100644
 +/// null A/B result.
 +void LogTestSwitches(const Core::System& system) {
 +    namespace FastDraw = VideoCommon::Nx2FastDraw;
-+    const std::array<std::pair<const char*, bool>, 6> switches{{
++    const std::array<std::pair<const char*, bool>, 7> switches{{
 +        {"EDEN_NX2_TEST_1216", FastDraw::g_test_1216.load(std::memory_order_relaxed)},
 +        {"EDEN_NX2_ZERO_TRIM", system.DeviceMemory().ZeroTrimRunning()},
 +        {"EDEN_NX2_KSPIN", Kernel::Nx2Wait::Enabled()},
@@ -59237,6 +60608,10 @@ index ac475126e1..b8fb2b2369 100644
 +        {"EDEN_NX2_NATIVE_FLOAT_ATOMICS",
 +         Vulkan::g_native_float_atomics.load(std::memory_order_relaxed)},
 +        {"LICHII_TFB_BARRIER_LAZY", Vulkan::Scheduler::LazyTransformFeedbackBarrier()},
++        // On only on AMD's proprietary driver, which gets r64's helpers otherwise (the "Global
++        // memory routing" line says which helpers are used).
++        {"LICHII_UPSTREAM_GLOBAL_ROUTING",
++         Vulkan::g_upstream_global_routing.load(std::memory_order_relaxed)},
 +    }};
 +    std::string line;
 +    for (const auto& [name, on] : switches) {
@@ -59303,7 +60678,7 @@ index ac475126e1..b8fb2b2369 100644
  } // Anonymous namespace
  
  namespace VideoCore {
-@@ -61,6 +164,13 @@ void CreateGPU(std::optional<Tegra::GPU>& gpu, Core::Frontend::EmuWindow& emu_wi
+@@ -61,6 +168,13 @@ void CreateGPU(std::optional<Tegra::GPU>& gpu, Core::Frontend::EmuWindow& emu_wi
      VideoCommon::StutterTrace::StartSession();
      Tegra::Nx2CmdPageDiag::ReadSwitch();
      VideoCommon::Nx2DownloadTrace::ReadSwitch();
@@ -59317,7 +60692,7 @@ index ac475126e1..b8fb2b2369 100644
      VideoCommon::ListMacroTrace::ReadSwitch();
      VideoCore::AsyncReadback::ReadSwitch();
      VideoCommon::Nx2Perf::ReadSwitch();
-@@ -76,6 +186,8 @@ void CreateGPU(std::optional<Tegra::GPU>& gpu, Core::Frontend::EmuWindow& emu_wi
+@@ -76,6 +190,8 @@ void CreateGPU(std::optional<Tegra::GPU>& gpu, Core::Frontend::EmuWindow& emu_wi
      try {
          auto renderer = CreateRenderer(system, emu_window, *gpu, std::move(context));
          gpu->BindRenderer(std::move(renderer));
@@ -62119,10 +63494,18 @@ index b202b9351b..77bb0e2e89 100644
          "lavapipe": [
            "e6d005b99ead6522f0390ef10d72f652",
 diff --git a/tools/shader-sweep/main.cpp b/tools/shader-sweep/main.cpp
-index 9996126de1..961e38a137 100644
+index 9996126de1..1b549e9ffa 100644
 --- a/tools/shader-sweep/main.cpp
 +++ b/tools/shader-sweep/main.cpp
-@@ -829,28 +829,7 @@ Shader::RuntimeInfo PipelineRuntime(std::span<const u8> key, std::span<const u64
+@@ -741,6 +741,7 @@ Shader::Profile OfflineProfile(const Shader::HostTranslateInfo& host) {
+         field("support_storage_texel_buffer_array_nonuniform_indexing",
+               &P::support_storage_texel_buffer_array_nonuniform_indexing);
+         field("select_global_memory_buffer", &P::select_global_memory_buffer);
++        field("r64_global_memory_routing", &P::r64_global_memory_routing);
+         field("warp_size_potentially_larger_than_guest",
+               &P::warp_size_potentially_larger_than_guest);
+         field("need_gather_subpixel_offset", &P::need_gather_subpixel_offset);
+@@ -829,28 +830,7 @@ Shader::RuntimeInfo PipelineRuntime(std::span<const u8> key, std::span<const u64
      info.input_topology = InputTopology(topology);
      info.force_early_z = (raw2 >> 4) & 1;
      info.y_negate = (raw2 >> 11) & 1;

@@ -138,6 +138,12 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   nine commits, plus r64's proven items as defaults (HANDOFF). Done on 2026-11-15: branch
   `r22-merge-nx2f` (tuned4 `c5380c86a3`); the base under the patch is now `0db03a262f`
   (`r22-up-5`); r65.
+- 2026-11-15, r66: r65 vanished in its boot build ("it did not freeze or go unresponsive, it
+  just disappeared"). r66 gives AMD r64's global memory routing helpers, 16 MiB thread stacks and
+  a stack overflow report from a thread of its own (HANDOFF).
+- 2026-11-15 (owner): "Make the writeups for me, credit Frizti for credit in my testing methods":
+  a public write-up of the build and an AGENTS.md of our method in lichii-tuned/community/, for
+  the owner to share with the community.
 - Scheduled tasks ("Resume Lichii work") resumed this session after usage cut-offs from
   2026-11-12 to 2026-11-15. 2026-11-15 (owner): "Stop all reminders to check for usage renewals":
   none is active, and none is to be created again.

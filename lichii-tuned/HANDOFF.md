@@ -56,7 +56,7 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   then the nine reverts; merged in `7675f3f8c`; before it `85a2cc0ac7` in `ada9ce77c`, build
   171 `c169856090` in `8619a1df3`, `2eb5f081c` in `526c0ab1c`, `17baed716` in `2d9ea59c5`) + the
   workflow + this folder. Round 21's Fritchii tree (branch `tuned5`) stays in the history. The
-  patch is `git diff --binary 0db03a262f tuned4` (352 files, 2.9 MB), backed up in
+  patch is `git diff --binary 0db03a262f tuned4` (358 files, 2.9 MB; r66), backed up in
   `tuned4.bundle` (`git fetch lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has
   `0db03a262f`). Since upstream's rename the build target is `lichii` and the options are
   `-DLICHII_*`. Variants: `pgo`, `pgo-lto` and `pgo-train`;
@@ -123,11 +123,11 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   `65745c243f` in `9161e35d2`, build 171 `c169856090` in `31d387f72`, r59 merged in) up to
   `04e8a8d2a`, branch `r22-merge-nx2c`, r61's launcher cleanup `c73800765`, and merge 4
   (`r22-up-no1486` in `a8788276c`), branch `r22-merge-nx2e`, and the tests' stack `cf51fcc85`,
-  and merge 5 with r65 (`r22-up-5` in `1176150cc`) up to `c5380c86a`, branch `r22-merge-nx2f`;
-  pushing it doesn't trigger builds).
+  and merge 5 with r65 (`r22-up-5` in `1176150cc`) up to `c5380c86a`, branch `r22-merge-nx2f`,
+  and r66 up to `3694d1a62a` on the same branch; pushing it doesn't trigger builds).
   `lichii-tuned/tuned4.bundle` holds the same history as a backup (`git fetch
   lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has `0db03a262f`, as `tuned` does).
-  The patch is `git diff --binary 0db03a262f tuned4` (352 files, 2.9 MB); check it
+  The patch is `git diff --binary 0db03a262f tuned4` (358 files, 2.9 MB); check it
   with `git apply --check` on a clean `tuned` checkout before committing it. To move to a newer
   upstream: merge it into tuned4 and into `tuned`, then diff tuned4 against the merged upstream
   commit. An upstream change we leave out (merge 4: #1486; merge 5: nine) is reverted on a
@@ -2878,8 +2878,69 @@ Own changes:
        eden_crash.dmp and no Event Viewer entry, so more likely a hang or a silent exit than a
        crash. The next launch built nothing at boot and skipped the precache by upstream #1505's
        guard (the .booting marker), then played; the guard resets, so the launch after builds
-       again. Under investigation: a launch with EDEN_NX2_PIPELINE_BUILD_TRACE; suspects are
-       merge 5's SPIR-V changes for AMD, the boot build path and the merged logging (#1771).
+       again. Every r65 launch that built died the same way: see r66.
+   - r66 (2026-11-15), for r65's disappearance in the boot build:
+     - Evidence: three r65 launches that built (the owner's logs of 2026-11-15, AMD driver
+       2.0.416 as with r64, the last one with r65's defaults off) died at the same point, after
+       45, 44 and 42 'Patch topology' warnings, with no 'Host crash' line, no eden_crash.dmp and
+       no WER entry. The pipeline build trace of the second: 452 compute and 809 of 5,316
+       graphics builds began, 4 were open at the end, among them 98da1b4bd085f63c (task
+       b41e5eadb0568672, mesh 49e30c36b219f7e6, fragment c72b6ea746c00433), the only open one of
+       the 42 task/mesh pipelines and the first cold one (r65's earlier launches compiled the 41
+       before it: 0.1-0.5 ms). The other threads wound down rather than being cut off. AMD's
+       driver cache starts cold for each new build, so r65's first launch compiled everything.
+     - Why nothing was written: upstream #1728's crash handler reports on the crashed thread.
+       After a stack overflow that thread has a few KiB left, the report overflows again and the
+       kernel ends the process: no line, no dump, no WER.
+     - Candidates: (1) #1681 (3a8a90476c, with #1757) rewrote the global memory routing helpers
+       into one return through OpPhis, the one merge-5 change to the SPIR-V AMD gets (the r64 to
+       r65 diff, reviewed); r64's form built. Against it: the heaviest #1681 program
+       (f98012dc9a4465ff, 72 accesses over 10 buffers) compiled in an earlier r65 launch, and
+       nothing shows that 98da1b4bd085f63c's mesh or fragment routes global memory. (2) A stack
+       overflow in AMD's compiler on a 1 MiB shader job thread (std::thread, lld's default
+       stack), which would also explain the silence. (3) A fail-fast in the driver (WER usually
+       logs one). r66 covers (1) and (2), and makes the next disappearance say which.
+     - r66 = tuned4 3694d1a62a (r22-merge-nx2f, 12 commits on r65):
+       - AMD's proprietary driver gets r64's routing helpers: Profile::r64_global_memory_routing,
+         DefineGlobalMemoryFunctionsR64 = r64's body (577b0d1577) verbatim; 192 synthetic modules
+         byte-identical to r64's with it, none without; LICHII_UPSTREAM_GLOBAL_ROUTING=1 gives
+         upstream's. The boot log's 'Global memory routing:' line and the switches line say
+         which; the compute precache marker (WarmVariant) includes it.
+       - lichii.exe (and lichii-cmd) link with --stack 16777216: every thread without its own
+         size, the shader job workers and Qt's pools among them, reserves 16 MiB.
+       - A stack overflow is reported by a CrashReporter thread with its own stack: the crashed
+         thread only hands over its EXCEPTION_POINTERS and waits (30 s at most); the reporter
+         walks the crashed stack (RtlVirtualUnwind behind a guard that checks every read) and
+         writes the 'Host crash' line ('stack overflow reported by thread ...', innermost and
+         outermost frames, frame count) and eden_crash.dmp. Shader job workers keep 64 KiB of
+         stack back for it (SetThreadStackGuarantee, on stacks of 2 MiB or more). If the dump
+         blocks on a lock the crashed thread holds, Lichii hangs after the line instead of
+         ending.
+       - The CRT invalid-parameter handler (#1728) only in MSVC builds: mingw-w64's startup
+         installs a no-op handler, so the CRT call returns its error again, as in r64.
+       - EDEN_NX2_PIPELINE_BUILD_TRACE: t= (seconds since the trace opened) on every line, a MEM
+         line every second (commit, working set, system commit/limit) and an EXIT line from
+         exit(); a trace that just stops ended in a crash, a fail-fast, ExitProcess or
+         TerminateProcess.
+       - Launchers: crash-trace.bat (the trace; waits for Lichii and appends EXITCODE:
+         -1073741571 stack overflow, -1073740791 fail-fast, -1073741819 access violation) and
+         ab-47-upstream-routing.bat (upstream's helpers, same trace).
+       - CI: the tests workflow builds lichii-tuned/tests/crash_overflow_check.cpp with the
+         patched crash handler and overflows four stacks on the Windows runner; 'guarded' (as
+         the shader job workers run) must be reported, the other three only warn.
+     - Checks: MinGW syntax check of every changed file (vk_pipeline_cache.cpp keeps only its
+       known -Wshadow), the routing unit tests ([global_memory], 6 cases), the unwind guard on
+       52 synthetic cases, the trace under ThreadSanitizer and ASan, the patch applied to
+       r22-up-5 equals tuned4's tree. Nothing ran on Windows before CI.
+     - Test plan: delete lichii-cache.v2.bin.booting if r65's last launch left it, otherwise
+       r66's first launch skips the boot build and the preparation. The launch that builds,
+       with crash-trace.bat, is the test: 98da1b4bd085f63c's END line in pipeline-builds.txt.
+       If it boots, ab-47 once (after a launch that got through the build) tells the cause:
+       ab-47 boots, the 1 MiB stack was it; ab-47 dies, AMD can't build upstream's form. If r66
+       dies too: the 'Host crash' line, eden_crash.dmp, the MEM lines and the EXITCODE line.
+     - Maintenance: upstream fixes to DefineGlobalMemoryFunctions don't reach the R64 copy (a new
+       GlobalAtomic kind breaks the build at its switch; an opcode added only to kind_of would
+       not). Drop the copy once a build with upstream's form boots on AMD.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
