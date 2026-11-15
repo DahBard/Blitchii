@@ -138,10 +138,9 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   nine commits, plus r64's proven items as defaults (HANDOFF). Done on 2026-11-15: branch
   `r22-merge-nx2f` (tuned4 `c5380c86a3`); the base under the patch is now `0db03a262f`
   (`r22-up-5`); r65.
-- A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
-  asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
-  usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;
-  create it again for the next long piece of work.
+- Scheduled tasks ("Resume Lichii work") resumed this session after usage cut-offs from
+  2026-11-12 to 2026-11-15. 2026-11-15 (owner): "Stop all reminders to check for usage renewals":
+  none is active, and none is to be created again.
 
 - 2026-11-13: the repository moved to DahBard/Blitchii, private, with its full history; our own
   files keep no reference to the origin repository (upstream's own code and the git history stay as
@@ -152,8 +151,8 @@ Usage (owner, 2026-11-14): "make it a general rule to use as many agents with ul
 take to get the fastest results, we will not be conservative with usage any more." Use as many
 agents as the fastest result needs. A workflow runs at most 2 agents at once on this 4-CPU
 machine, so run several workflow instances (or background agents) side by side. Usage is still
-limited per 5-hour window: commit and push at each checkpoint so work survives a cut-off, and
-continue when usage renews.
+limited per 5-hour window: commit and push at each checkpoint so work survives a cut-off (no
+scheduled usage-renewal reminders; see above).
 
 Builds are Windows only. On 2026-11-11 the owner dropped the CachyOS (Linux) build: "we won't be
 building towards Linux in the future". The build workflow, what the tuned build contains, the test
