@@ -8,6 +8,8 @@
     bench.bat prepare               a new build's first launch (precache), unattended
     bench.bat restore-config <session>
     bench.bat zip <session>
+    bench.bat autopilot [--once]    new builds from CI, their preparation and queued plans, unattended
+                                    (autopilot.py; install-autostart starts it at logon)
 
 Each run: launch lichii.exe with the arm's environment and the debug server, find this run's
 log, check the boot lines, press A through the menus to Link's save, settle, measure, quit
@@ -131,11 +133,14 @@ def read_hotkeys(ini):
 
 
 class Clock:
-    """Time for the runner; every sleep polls F3 (held over two polls) and control.json."""
+    """Time for the runner; every sleep polls F3 (held over two polls) and control.json. A guard
+    (the autopilot's owner-input check) is called on every poll while F3 isn't down; it raises
+    to stop the run."""
 
-    def __init__(self, host, control_path=None):
+    def __init__(self, host, control_path=None, guard=None):
         self.host = host
         self.control_path = control_path
+        self.guard = guard
         self.f3_polls = 0
         self.checks = 0
 
@@ -150,6 +155,8 @@ class Clock:
                 raise Aborted("F3")
         else:
             self.f3_polls = 0
+        if self.guard is not None and self.f3_polls == 0:
+            self.guard()
         if self.control_path and self.checks % 10 == 0:
             control = read_json(self.control_path, {}) or {}
             if control.get("abort"):
@@ -284,7 +291,7 @@ def run_schedule(plan, run_one, say=print):
 
 class Runner:
     def __init__(self, host, local, plan, session_dir, client_factory=None, script=None, refs=None,
-                 say=print, ask=None):
+                 say=print, ask=None, guard=None, threaded=True):
         self.host = host
         self.local = local
         self.plan = plan
@@ -294,9 +301,9 @@ class Runner:
         self.refs = refs if refs is not None else load_refs()
         self.say = say
         self.ask = ask
-        self.clock = Clock(host, os.path.join(session_dir, "control.json"))
+        self.clock = Clock(host, os.path.join(session_dir, "control.json"), guard)
         self.launches = 0
-        self.threaded = True
+        self.threaded = threaded
         self.probe_values = []
         self.hotkeys = navigate.hotkey_sets(local.get("hotkeys", DEFAULT_HOTKEYS))
         self.log_dir = local["log_dir"]
@@ -793,16 +800,17 @@ ZIP_FILES = re.compile(r"^(plan\.json|status\.json|runner\.log|summary\.txt|runs
                        r"runs/[^/]+/(eden_log\.txt|run\.json|eden_crash\.dmp|hang\.dmp|shots/[^/]+\.png))$")
 
 
-def make_zip(session_dir, results_dir):
-    """Logs, run.json files, thumbnails and the summary; never saves, keys, configs, nand or sdmc."""
+def make_zip(session_dir, results_dir, exclude=None, name=None):
+    """Logs, run.json files, thumbnails and the summary; never saves, keys, configs, nand or sdmc.
+    `exclude` (a regex on the path in the session) leaves more out, for a smaller zip."""
     os.makedirs(results_dir, exist_ok=True)
-    path = os.path.join(results_dir, os.path.basename(session_dir) + ".zip")
+    path = os.path.join(results_dir, (name or os.path.basename(session_dir)) + ".zip")
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for root, _, files in os.walk(session_dir):
             for name in files:
                 full = os.path.join(root, name)
                 rel = os.path.relpath(full, session_dir).replace(os.sep, "/")
-                if ZIP_FILES.match(rel):
+                if ZIP_FILES.match(rel) and not (exclude and re.search(exclude, rel)):
                     z.write(full, os.path.basename(session_dir) + "/" + rel)
     return path
 
@@ -853,8 +861,12 @@ def preflight(host, local, need_ac=True):
 
 
 def new_session(plan, kind="run"):
-    session_dir = os.path.join(DATA, "sessions", f"{stamp()}-{slug(plan.get('name', kind))}")
-    os.makedirs(os.path.join(session_dir, "runs"), exist_ok=True)
+    base = os.path.join(DATA, "sessions", f"{stamp()}-{slug(plan.get('name', kind))}")
+    session_dir, n = base, 1
+    while os.path.exists(session_dir):
+        n += 1
+        session_dir = f"{base}-{n}"
+    os.makedirs(os.path.join(session_dir, "runs"))
     write_json(os.path.join(session_dir, "plan.json"), plan)
     write_json(os.path.join(session_dir, "control.json"), {"abort": False, "stop_after_run": False})
     return session_dir
@@ -902,7 +914,7 @@ def cmd_run(host, plan_path, yes=False, say=print, ask=input):
         host.keep_awake(False)
 
 
-def end_session(host, local, plan, session_dir, results, notes, stopped, runner, say):
+def end_session(host, local, plan, session_dir, results, notes, stopped, runner, say, quiet=False):
     if not results:
         results = [read_json(os.path.join(session_dir, "runs", d, "run.json"))
                    for d in sorted(os.listdir(os.path.join(session_dir, "runs")))]
@@ -914,6 +926,8 @@ def end_session(host, local, plan, session_dir, results, notes, stopped, runner,
     runner.status(phase="done", result=stopped or "finished")
     path = make_zip(session_dir, os.path.join(DATA, "results"))
     say(text)
+    if quiet:
+        return path
     say(f"Upload this one file: {path}")
     try:
         host.beep()
@@ -986,19 +1000,26 @@ def ambiguous_refs(refs, threshold):
     return out
 
 
-def cmd_prepare(host, say=print):
+def cmd_prepare(host, say=print, local=None, guard=None, runner_kwargs=None):
     """A new build's first launch: the precache and preparation (up to 75 min), then 60 s at the
-    save and a clean quit, so measured runs start warm."""
-    local = load_local()
+    save and a clean quit, so measured runs start warm. The autopilot passes the new build's
+    local (its build_dir and build) and its owner-input guard."""
+    local = local or load_local()
     preflight(host, local)
     plan = check_plan_for(local, 60, 10)
     session_dir = new_session(plan, "prepare")
     host.keep_awake(True)
     try:
-        runner = Runner(host, local, plan, session_dir, say=say)
-        record = runner.launch("N", "01-prepare", 10, boot_timeout_s=75 * 60, allow_precache=True)
+        runner = Runner(host, local, plan, session_dir, say=say, guard=guard, **(runner_kwargs or {}))
+        try:
+            record = runner.launch("N", "01-prepare", 10, boot_timeout_s=75 * 60, allow_precache=True)
+        except (Aborted, Fatal) as error:
+            if getattr(error, "record", None):
+                error.record["session"] = session_dir
+            raise
     finally:
         host.keep_awake(False)
+    record["session"] = session_dir
     say(f"prepare: {record['status']} {record.get('reason', '')}")
     return record
 
@@ -1104,7 +1125,16 @@ def main(argv=None):
     z = sub.add_parser("zip")
     z.add_argument("session")
     sub.add_parser("validate").add_argument("plan")
+    auto = sub.add_parser("autopilot", help="install new CI builds, prepare them and run queued plans, unattended")
+    auto.add_argument("--once", action="store_true", help="one pass over the work there is now, then exit")
+    auto.add_argument("--idle-min", type=float, help="minutes the owner must be idle before a launch (default 15)")
+    sub.add_parser("autopilot-stop", help="ask a running autopilot to stop after the current launch")
+    sub.add_parser("install-autostart", help="start the autopilot at logon (a Startup entry)")
+    sub.add_parser("uninstall-autostart", help="remove the Startup entry")
     args = parser.parse_args(argv)
+    if args.command in ("autopilot", "autopilot-stop", "install-autostart", "uninstall-autostart"):
+        import autopilot
+        return autopilot.main(args)
     try:
         if args.command == "validate":
             plan = benchplan.load_plan(args.plan)

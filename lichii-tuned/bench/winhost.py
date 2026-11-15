@@ -1,7 +1,9 @@
 """The Windows-only parts of Lichii Bench, behind one small class.
 
 Everything that needs the Win32 API (windows of a process, posted messages, the shared-delete
-log open, power status, the keep-awake request, EcoQoS, F3, minidumps) is here. The functions
+log open, power status, the keep-awake request, EcoQoS, F3, minidumps, and for the autopilot the
+owner's last input, controller activity, a busy or locked desktop and the one-instance lock) is
+here. The functions
 that decide something (which window is the main one, which is the confirm box) are plain
 functions, tested on Linux; the runner's tests use a fake host instead of WinHost.
 """
@@ -61,6 +63,40 @@ def filetime_to_unix(value):
     return value / 1e7 - 11644473600.0
 
 
+# SHQueryUserNotificationState: the states in which no launch may start.
+BUSY_STATES = {1: "the PC is locked or a screen saver runs", 2: "a full-screen program runs",
+               3: "a full-screen Direct3D program runs", 4: "presentation mode is on"}
+
+
+def idle_from_ticks(now_tick, last_tick):
+    """Seconds since the last input from GetTickCount and LASTINPUTINFO.dwTime (32-bit, wraps
+    every 49.7 days)."""
+    return ((now_tick - last_tick) & 0xFFFFFFFF) / 1000.0
+
+
+def pad_active(buttons, left_trigger, right_trigger, sticks, stick_limit=16000, trigger_limit=40):
+    """A controller in use: a button down, a trigger pressed, or a stick well past its centre
+    (half travel, so a resting stick's drift doesn't count)."""
+    return bool(buttons) or left_trigger > trigger_limit or right_trigger > trigger_limit or \
+        any(abs(v) > stick_limit for v in sticks)
+
+
+def lock_exclusive(stream):
+    """Takes a lock on an open file that ends with the process (a crash or reboot frees it).
+    False if another process holds it."""
+    try:
+        if os.name == "nt":
+            import msvcrt
+            stream.seek(0)
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
 def port_open(address):
     host, _, port = address.rpartition(":")
     try:
@@ -100,9 +136,15 @@ class WinHost:
             (u32.PostMessageW, wt.BOOL, [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]),
             (u32.MapVirtualKeyW, wt.UINT, [wt.UINT, wt.UINT]),
             (u32.GetAsyncKeyState, wt.SHORT, [ctypes.c_int]),
+            (k32.GetTickCount, wt.DWORD, []),
+            (u32.OpenInputDesktop, wt.HANDLE, [wt.DWORD, wt.BOOL, wt.DWORD]),
+            (u32.CloseDesktop, wt.BOOL, [wt.HANDLE]),
         ]
         for fn, restype, argtypes in sigs:
             fn.restype, fn.argtypes = restype, argtypes
+        self.pads = None        # XInputGetState, loaded on first use
+        self.pad_connected = {}
+        self.pad_checked = 0.0
 
     # -- time --------------------------------------------------------------------------------
     now = staticmethod(time.time)
@@ -110,7 +152,10 @@ class WinHost:
 
     # -- processes ---------------------------------------------------------------------------
     def launch(self, cmd, env, cwd):
-        return subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # NORMAL_PRIORITY_CLASS: without it a child of the below-normal runner (lower_priority)
+        # would get below-normal priority too.
+        return subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                creationflags=0x00000020)
 
     def creation_time(self, pid):
         wt = self.wt
@@ -237,12 +282,84 @@ class WinHost:
     def f3_down(self):
         return bool(self.u32.GetAsyncKeyState(VK_F3) & 0x8000)
 
+    # -- the owner (autopilot) ------------------------------------------------------------------
+    def input_idle_s(self):
+        """Seconds since the last keyboard or mouse input in this session (GetLastInputInfo). The
+        bench's own input goes through the debug server and its key presses are posted messages,
+        so neither counts."""
+        class LastInput(self.ct.Structure):
+            _fields_ = [("cbSize", self.wt.UINT), ("dwTime", self.wt.DWORD)]
+        info = LastInput(self.ct.sizeof(LastInput), 0)
+        if not self.u32.GetLastInputInfo(self.ct.byref(info)):
+            return None
+        return idle_from_ticks(self.k32.GetTickCount(), info.dwTime)
+
+    def controller_active(self):
+        """True while a connected XInput controller is in use. Unconnected slots are looked at
+        again every 10 s only (a call on an empty slot is slow)."""
+        ct, wt = self.ct, self.wt
+        if self.pads is None:
+            class Gamepad(ct.Structure):
+                _fields_ = [("wButtons", wt.WORD), ("bLeftTrigger", ct.c_ubyte), ("bRightTrigger", ct.c_ubyte),
+                            ("sThumbLX", ct.c_short), ("sThumbLY", ct.c_short), ("sThumbRX", ct.c_short),
+                            ("sThumbRY", ct.c_short)]
+
+            class State(ct.Structure):
+                _fields_ = [("dwPacketNumber", wt.DWORD), ("Gamepad", Gamepad)]
+            self.pad_state = State
+            self.pads = False
+            for name in ("XInput1_4", "XInput9_1_0"):
+                try:
+                    dll = ct.WinDLL(name)
+                except OSError:
+                    continue
+                dll.XInputGetState.restype = wt.DWORD
+                dll.XInputGetState.argtypes = [wt.DWORD, ct.POINTER(State)]
+                self.pads = dll.XInputGetState
+                break
+        if not self.pads:
+            return False
+        now = time.monotonic()
+        recheck = now - self.pad_checked >= 10.0
+        if recheck:
+            self.pad_checked = now
+        active = False
+        for index in range(4):
+            if not recheck and not self.pad_connected.get(index):
+                continue
+            state = self.pad_state()
+            connected = self.pads(index, ct.byref(state)) == 0
+            self.pad_connected[index] = connected
+            if connected:
+                g = state.Gamepad
+                active = active or pad_active(g.wButtons, g.bLeftTrigger, g.bRightTrigger,
+                                              (g.sThumbLX, g.sThumbLY, g.sThumbRX, g.sThumbRY))
+        return active
+
+    def user_busy(self):
+        """Why no launch may start now (locked, a full-screen program, presentation mode), or None."""
+        desk = self.u32.OpenInputDesktop(0, False, 0x0100)  # DESKTOP_SWITCHDESKTOP
+        if not desk:
+            return "the PC is locked"
+        self.u32.CloseDesktop(desk)
+        state = self.ct.c_int(0)
+        try:
+            shell32 = self.ct.WinDLL("shell32")
+            if shell32.SHQueryUserNotificationState(self.ct.byref(state)) != 0:
+                return None
+        except (OSError, AttributeError):
+            return None
+        return BUSY_STATES.get(state.value)
+
     def disk_free(self, path):
         return shutil.disk_usage(path).free
 
     def beep(self):
         import winsound
         winsound.MessageBeep()
+
+    def start_file(self, path):
+        os.startfile(path)
 
     def show_file(self, path):
         subprocess.Popen(["explorer", "/select,", str(path)])

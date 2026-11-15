@@ -11,6 +11,8 @@ on:
     paths:
       - "lichii-tuned/**"
       - ".github/workflows/lichii-tuned.yml"
+      # The bench and its queue aren't in the package: a queued plan must not start a build.
+      - "!lichii-tuned/bench/**"
   workflow_dispatch:
     inputs:
       variant:

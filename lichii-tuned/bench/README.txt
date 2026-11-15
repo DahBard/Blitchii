@@ -67,9 +67,56 @@ The zip holds the logs, each run's run.json and thumbnails, the summary and the 
 It never holds saves, configs, keys, nand or sdmc. The logs contain your Windows user name in
 paths, so keep the zip private.
 
+Autopilot (hands off)
+---------------------
+The autopilot does the rest on its own, at any hour: it installs each new build from this
+repository's CI, prepares it once, runs the plans queued in the repository on the build each one
+names, and uploads every sitting's zip to the repository's bench-results branch. You don't drag
+plans or upload zips any more.
+
+Once (after setup and check):
+    bench.bat install-autostart
+It asks for the GitHub repository that builds Lichii (owner/name) and the folder that holds one
+folder per build (your "Forked Lichii Builds"), checks that the GitHub CLI can see the build
+workflow (gh auth status), copies the bench to C:\LichiiBench\app, adds "Lichii Bench
+autopilot" to your Startup folder and starts it in a minimized console. bench.bat
+uninstall-autostart removes the Startup entry.
+
+What it does, every 5 minutes:
+- A new successful build on the tuned branch: its package is downloaded into a new folder
+  <builds>\r<N> (a folder that already exists is never overwritten; one that holds lichii.exe is
+  taken as that build), with the bench copied in. It never deletes a build: when the disk has
+  less than 10 GB to spare it waits, and says so, until you delete old ones.
+- A new build gets "bench.bat prepare" once, unattended.
+- Queued plans run in order, each as a normal sitting; the results go to the bench-results
+  branch, where they are read from the cloud. A heartbeat goes there about every 30 minutes.
+
+Your PC stays yours:
+- Nothing starts until you have left the keyboard, mouse and controller alone for 15 minutes,
+  and not while the PC is locked, a full-screen program runs, Lichii is open, the laptop is on
+  battery or Windows waits for a restart.
+- Touch the keyboard, mouse or a controller while it runs and it closes Lichii at once. That
+  launch is run again once you have been idle 15 minutes; the sitting goes on where it was (after
+  more than 6 hours away from it, the sitting starts again from the beginning later). It never
+  closes a Lichii you started.
+- Hold F3 for about a second to stop the autopilot (the sitting so far is kept and marked
+  aborted); it starts again at your next logon. bench.bat autopilot-stop stops it after the
+  current launch instead.
+- While it has work, it keeps the PC and display awake (on AC only); with nothing to do it lets
+  Windows sleep as usual. For runs at night, the PC must not lock on its own while the display is
+  on (Settings > Accounts > Sign-in options; a screen saver with a lock locks it too).
+- It never writes to your saves. If Ocarina's save folder changes during one of its launches, it
+  makes another copy in save-backups and flags it.
+
+Its log is C:\LichiiBench\autopilot.log; its state is in C:\LichiiBench\autopilot\. To pause it
+without stopping it, put {"pause": true} in C:\LichiiBench\autopilot\control.json.
+bench.bat autopilot --once does one pass (install, prepare, the plans queued now) and exits.
+
 Other commands
 --------------
 bench.bat validate <plan>          check a plan without running it
 bench.bat zip <session>            zip a session again
 bench.bat restore-config <session> put back the configs copied at the start of that session
                                    (every launch rewrites Lichii's UI settings)
+bench.bat autopilot [--once]       the hands-off loop above (--idle-min N for a shorter wait)
+bench.bat autopilot-stop           stop a running autopilot after its current launch

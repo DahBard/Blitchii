@@ -1,6 +1,8 @@
 @echo off
 setlocal
 rem Lichii Bench: bench.bat setup, check, run plan.json, prepare, restore-config session, zip session.
+rem bench.bat autopilot [--once]: new CI builds, their preparation and queued plans, unattended (F3 stops it);
+rem install-autostart starts it at logon, uninstall-autostart removes that, autopilot-stop stops it after a launch.
 rem Drag a plan onto this file to run it. It sits in the build folder next to bench\ (or inside bench\).
 rem Uses bench\python if present, else C:\LichiiBench\python, else the installed Python 3.
 set BENCH_DIR=%~dp0bench\
@@ -14,4 +16,5 @@ if not defined BENCH_PY set BENCH_PY=python
 %BENCH_PY% -I "%BENCH_DIR%oot_bench.py" %*
 set BENCH_EXIT=%ERRORLEVEL%
 if /i "%~x1"==".json" pause
+if /i "%~1"=="autopilot" if not "%BENCH_EXIT%"=="0" pause
 exit /b %BENCH_EXIT%
