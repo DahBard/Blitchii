@@ -140,7 +140,9 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   (`r22-up-5`); r65.
 - 2026-11-15, r66: r65 vanished in its boot build ("it did not freeze or go unresponsive, it
   just disappeared"). r66 gives AMD r64's global memory routing helpers, 16 MiB thread stacks and
-  a stack overflow report from a thread of its own (HANDOFF).
+  a stack overflow report from a thread of its own (HANDOFF). The owner's r66 test: "Everything
+  loaded up perfect, the fix worked", and ab-47 (upstream's form) played too: the 1 MiB stack
+  was the cause.
 - 2026-11-15 (owner): "Make the writeups for me, credit Frizti for credit in my testing methods":
   a public write-up of the build and an AGENTS.md of our method in lichii-tuned/community/, for
   the owner to share with the community.

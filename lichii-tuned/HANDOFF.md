@@ -2949,6 +2949,18 @@ Own changes:
      - Maintenance: upstream fixes to DefineGlobalMemoryFunctions don't reach the R64 copy (a new
        GlobalAtomic kind breaks the build at its switch; an opcode added only to kind_of would
        not). Drop the copy once a build with upstream's form boots on AMD.
+     - Owner's result (2026-11-15): r66's first launch with crash-trace.bat loaded and played (the
+       log a1fabb35, r66 bfe83e2de4: 'Global memory routing: r64's helpers'; the boot load 264.9 s
+       cold, 451 of 452 compute and 4,030 of 5,316 graphics pipelines; the precache 2,236.4 s,
+       123,626 built and 47 failed, the preparation 120,085 of 120,124 as before; the precache
+       journal skipped 8 pipeline builds poisoned by an earlier stopped precache; FSR's early
+       context 533 ms; a clean exit). Then ab-47 (upstream's #1681 form) played too. So the cause
+       was the 1 MiB stack: r65's deaths and both r66 launches compiled 98da1b4bd085f63c cold
+       (a new build's AMD cache starts cold), and if its stages route global memory, ab-47
+       compiled #1681's form of it cold with 16 MiB. Next: the R64 copy goes in r67 unless a
+       fountain A/B (perf-trace-noprofile against it with LICHII_UPSTREAM_GLOBAL_ROUTING=1) shows
+       r64's form saving GPU time; delete precache-jobs.poison before r67's first launch so the 8
+       skipped builds are tried again with the bigger stacks.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
