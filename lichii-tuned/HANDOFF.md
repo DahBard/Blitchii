@@ -51,13 +51,14 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   trigger in their 579 workflow files matches `upstream/...`). `upstream-nx2` is a stray copy of
   `upstream/nx2` that this session's git proxy can't delete; delete it on GitHub. This session's
   proxy also refuses tag pushes and more than about 20 refs per push.
-- Since 2026-11-14 (r62): branch `tuned` = upstream nx2 `87d84d513c` without #1486, branch
-  `r22-up-no1486` (`85a2cc0ac7` reverts `9441129819`; merged in `ada9ce77c`; build 171
-  `c169856090` in `8619a1df3`, `2eb5f081c` in `526c0ab1c`, `17baed716` in `2d9ea59c5`) + the
+- Since 2026-11-15 (r65): branch `tuned` = upstream nx2 `58e418db65` without nine commits,
+  branch `r22-up-5` (`0db03a262f`: r22-up-no1486 merged with `58e418db65` at upstream's tree,
+  then the nine reverts; merged in `7675f3f8c`; before it `85a2cc0ac7` in `ada9ce77c`, build
+  171 `c169856090` in `8619a1df3`, `2eb5f081c` in `526c0ab1c`, `17baed716` in `2d9ea59c5`) + the
   workflow + this folder. Round 21's Fritchii tree (branch `tuned5`) stays in the history. The
-  patch is `git diff --binary 85a2cc0ac7 tuned4` (318 files, 2.7 MB), backed up in
+  patch is `git diff --binary 0db03a262f tuned4` (352 files, 2.9 MB), backed up in
   `tuned4.bundle` (`git fetch lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has
-  `85a2cc0ac7`). Since upstream's rename the build target is `lichii` and the options are
+  `0db03a262f`). Since upstream's rename the build target is `lichii` and the options are
   `-DLICHII_*`. Variants: `pgo`, `pgo-lto` and `pgo-train`;
   `msvc` is off again. The 'AMD FidelityFX libraries' step puts AMD's signed FSR and frame
   generation DLLs (SDK v2.4.0, SHA-256 checked) next to lichii.exe for CheezyEmu's FSR port.
@@ -121,15 +122,18 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   `5fc428bdc`, branch `r22-r57`, r59 up to `134cfab02`, branch `r22-r59`, and merge 3 (nx2
   `65745c243f` in `9161e35d2`, build 171 `c169856090` in `31d387f72`, r59 merged in) up to
   `04e8a8d2a`, branch `r22-merge-nx2c`, r61's launcher cleanup `c73800765`, and merge 4
-  (`r22-up-no1486` in `a8788276c`), branch `r22-merge-nx2e`, and the tests' stack `cf51fcc85`;
+  (`r22-up-no1486` in `a8788276c`), branch `r22-merge-nx2e`, and the tests' stack `cf51fcc85`,
+  and merge 5 with r65 (`r22-up-5` in `1176150cc`) up to `c5380c86a`, branch `r22-merge-nx2f`;
   pushing it doesn't trigger builds).
   `lichii-tuned/tuned4.bundle` holds the same history as a backup (`git fetch
-  lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has `85a2cc0ac7`, as `tuned` does).
-  The patch is `git diff --binary 85a2cc0ac7 tuned4` (318 files, 2.7 MB); check it
+  lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has `0db03a262f`, as `tuned` does).
+  The patch is `git diff --binary 0db03a262f tuned4` (352 files, 2.9 MB); check it
   with `git apply --check` on a clean `tuned` checkout before committing it. To move to a newer
   upstream: merge it into tuned4 and into `tuned`, then diff tuned4 against the merged upstream
-  commit. An upstream change we leave out (merge 4: #1486) is reverted on a branch from the
-  upstream commit (`r22-up-no1486`); that branch is what both merge, and the patch base.
+  commit. An upstream change we leave out (merge 4: #1486; merge 5: nine) is reverted on a
+  branch from the upstream commit (`r22-up-no1486`, `r22-up-5`); that branch is what both merge,
+  and the patch base. Build the next one on the last (merge 5 merged upstream into r22-up-no1486
+  at upstream's tree, then reverted), so the merge base with tuned4 stays our last base.
 - Before turning `msvc` on, run `python3 -I lichii-tuned/check_patch_warnings.py <tuned4 checkout>`.
   It compiles the changed files with clang and GCC and reports warnings on added lines that the msvc
   variant treats as errors (shadowing, signed/unsigned compares, unused locals and captures,
@@ -2827,6 +2831,44 @@ Own changes:
      - Already in (8): #1486's revert (upstream's equals ours), #1180, #995 (our #969), #1155
        (we dropped #1036's flush), #1105, #1005, #1685, #1204. The other 74 change nothing for
        us (other drivers, other games, the frontend) and come with the merge.
+   - Merge 5 (2026-11-15): r22-up-5 (0db03a262f) = r22-up-no1486 merged with upstream nx2
+     58e418db65 at upstream's own tree (upstream reverted #1486 too), then the nine reverts. Its
+     merge base with tuned4 is 85a2cc0ac7, so #1486's lines stay out and our lines that look like
+     them survive. Branch r22-merge-nx2f: 35 conflicted files resolved by six agents by file group
+     (per-file notes in scratchpad up136/merge5-guide/), then an integrator, four reviewers by
+     area and a fixer.
+     - Choices: upstream's #805 indirect-argument sync (ObtainIndirectBuffer) taken whole
+       (classic launches only); #1619 drops the precache's graphics list, which we never filled,
+       while our boot builds, precompiled-pipeline stamp and per-build preparation stay; #1659
+       ported into our TrackOcarinaCamera (its data source only, our checks kept); #823's raise
+       only on integrated GPUs; the pipeline binary store on AMD only with
+       EDEN_NX2_AMD_PIPELINE_BINARIES=1; #995 replaces our #969 cherry-picks; #1036's flush stays
+       dropped; nx2_gsv's double m_gpu_only_bytes subtraction removed; our native float add skips
+       the CAS routing (NVIDIA's select path only).
+     - Fixed after the merge: gpu_trace/state.cpp for our pusher registers and shared QMD table;
+       the crash handler's _ReturnAddress, an MSVC intrinsic that doesn't link on MinGW
+       (__builtin_return_address under __GNUC__); a duplicate UseGpuMemory in the buffer cache
+       tests; a host spill episode now gives back the memory reserve and the recycler's images
+       first and keeps the reserve empty until it ends; the GPU trace corpus's roundtrip off while
+       #1655 is out (revert a9e4301787 if #1655 ever comes in); the FSR status button's chip
+       colour; the evicted-pipeline class in the runtime report.
+     - Checks: MinGW syntax check of 827 built files (one break from the merge, fixed; 21 fail on
+       tuned4 the same way, missing local headers and libraries), a symbol scan of the new
+       Windows code (only _ReturnAddress), and the patch applied to r22-up-5 equals tuned4's tree.
+   - r65 = tuned4 c5380c86a3, base under the patch r22-up-5 (0db03a262f): merge 5 plus
+     - r65-defaults: the FSR early context on (LICHII_FSR_EARLY_CONTEXT=0 off); LICHII_FSR_SLIM
+       c by default (0 off), with FSR 4 only, and the output format follows what the game
+       presents, so HDR doesn't rebuild FSR in the first load; the memory reserve 4096 MiB by
+       default with 24 GiB of RAM or more (0 off), Switch 1 titles following the budget; the
+       staging ring 256 MiB by default (0 off), where one upload over half the ring may take all
+       of it when nothing is in flight, and the 'Device memory in 10 s' line counts the refusals
+       next to such an upload (if they show, the next step is 512 MiB);
+     - r65-diag: EDEN_NX2_WFI_STATS=1, EDEN_NX2_GPU_WORK_WATCH ('DKB gpu_watch' lines),
+       EDEN_NX2_GUEST_THREAD_WINDOW_MS (each thread's longest run too, and short bursts listed),
+       EDEN_NX2_IPC_STATS=1;
+     - launchers: ab-43 native atomics and ab-44 the lazy TFB barrier (against
+       perf-trace-noprofile), ab-45 #1571 (against trace-smooth), ab-46 the pipeline binary store,
+       spike-hunt; ab-41 and ab-42 are gone.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host

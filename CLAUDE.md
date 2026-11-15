@@ -135,7 +135,9 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   that might benefit us. We shouldn't consider anything that will cost frame times or will be
   rewritten when we replace our pipeline with Fritchii's, any other optimizations that are
   likely to improve performance are good." Merge 5 for r65: upstream nx2 58e418db65 without
-  nine commits, plus r64's proven items as defaults (HANDOFF).
+  nine commits, plus r64's proven items as defaults (HANDOFF). Done on 2026-11-15: branch
+  `r22-merge-nx2f` (tuned4 `c5380c86a3`); the base under the patch is now `0db03a262f`
+  (`r22-up-5`); r65.
 - A scheduled task ("Resume Lichii work") resumed this session after usage cut-offs, as the owner
   asked on 2026-11-12 ("When my usage runs out, resume when it renews ... etc."), once at each
   usage renewal from 2026-11-13. Deleted on 2026-11-14 once merge 4 (r62) was built and tested;
