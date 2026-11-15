@@ -3047,6 +3047,115 @@ Own changes:
        - one N run at 3.2 GHz;
        - the 4.157 s trace, found by turning the probe, then the heap trace, then the clock
          trace off in turn.
+   - r66 sitting 2 (owner, 2026-11-15; r66 bfe83e2de4, 120 fps lock, frame generation and HDR
+     off; r64's route A-B-C-B-A through five loads; S1 R1 R2 S2 = trace-smooth, ab-45
+     (EDEN_NX2_TEST_1571=1), ab-45, trace-smooth, all with Force maximum clocks on, then OFF =
+     trace-smooth with it off; logs d95038f7, d3a7837b, 3f1c35a5, d9ee9bf6, dcbbca71; two route
+     analysts, a clock analyst and a judge with its own parser, scratchpad
+     r66-sitting2/{a,b,clock,judge}/; decision rules fixed before the analysis):
+     - The GPU sat at a flat ~1.79 GHz again, in every run, the setting on or off: probe play
+       medians 1,782-1,796 MHz (title 1,786-1,793) against 3,181-3,191 (title 3,368-3,387) in
+       r64. With the setting on, TurboMode ran (two Vulkan devices; the probe's own dispatch
+       delayed to ~43 us in 6-12 of 21-22 play windows, in none in OFF) but didn't raise the
+       clock; its code and the probe's are unchanged since r64. Back thread 4.12-4.16 GHz (r64
+       4.26-4.27). Nothing in this sitting ran at 3.2 GHz.
+     - Per run (budget64's loads and classes; frames over 33.4 ms and their excess over 16.7 ms
+       from L1 - 3 s to 'Shutdown requested', s; w/o = without L5's 3-25 s window; L1-L5 =
+       transition + tail, ms; spot = excess 6-14 s after L5, ms; back = us a draw in
+       A1/B1/C1/B2 by r64's steady.py; VMA0 = VMA heap 0 max, tc = texture cache max, MiB):
+         run     MHz >33.4   exc   w/o   L1   L2   L3  L4   L5 spot  back A1/B1/C1/B2     VMA0    tc
+         S1     1789   175  9.62  9.27 3161 1278 1325 478 1202  374  7.07/6.90/8.66/6.48 11509  9586
+         R1     1782   139  8.24  7.83 3161  750  854 542 1122  443  6.50/6.44/8.68/6.09 10966  9660
+         R2     1796   145  8.31  7.73 3187  761  884 548 1055  601  6.49/6.79/8.76/6.37 11299  9576
+         S2     1791   135  7.86  7.71 3163  878  705 555 1160  178  6.89/7.25/8.20/6.41 11842  9158
+         OFF    1794   121  7.64  7.47 3093  700  742 598 1177  193  6.93/7.34/8.81/6.40 11232  8818
+         r64S1  3181   198 12.87 11.93 3263 1252 1774 472 3997 1148  6.47/6.53/8.46/6.21 10999  9324
+         r64M1  3189   163 10.14  6.51 2995  726  572 351  864 3798  6.71/6.57/8.52/6.25 11102  9593
+         r64M2  3186   135  7.93  6.57 3101  757  533 216  889 1414  6.75/6.68/8.22/6.39 11142  9399
+         r64S2  3191   212 13.15 12.10 3389 1248 2357 477 3637 1011  6.71/6.71/8.13/6.14 11106  9494
+         r63     n/a   143  8.35  8.28 3445 1003  656 451  901   62  6.56/6.05/7.23/6.34 11134  9587
+       r64 M = ab-42 (r65's three defaults plus #1571); critical ~9,595 MiB in every run, R1
+       over it once; r63's spot is a lighter view (1,803 draws against ~3,050). Back work at
+       matched draws (1 s windows, 250-draw bins, against S1+S2): R1 -5.7%, R2 -3.0%, OFF +0.5%,
+       S2 against S1 -1.1%.
+     - ab-45 (#1571): INCONCLUSIVE; the switch stays off. From L1 R 8.24/8.31 s against S
+       9.62/7.86: under S1, over S2; mean -0.47 s (-5.3%), under the 10% bar and the 1.76 s
+       S1-S2 spread. Without L5's window 7.83/7.73 against 9.27/7.71: -0.71 s (-8.4%), spread
+       1.55 s, S2 again under both. ADOPT's memory clause fails too: R1's texture cache read
+       9,660 MiB against its 9,595 critical once (192.2 s, area C; 8,472 at the next line). Not
+       DROP: back work at matched draws -3.6 to -4.4% (higher in no segment), no
+       out-of-memory, device-loss, spill or give-back line, VMA heap 0 at most 10,966/11,299
+       MiB, no new error kind; the over-critical sample is a flag (the cache rides that level
+       in every run, S1 8 MiB under; ordinary collector work, no hitch), though R kept the
+       cache fuller in B1 and C (+0.6, +1.4 GB).
+       - The gain rests on S1, the noisy baseline (L2/L3 tails 756/747 ms of excess against
+         249/249 in S2; an area-A cluster at 92.9-97.0 s, 21 frames, 665 ms, five 'FSR
+         overlays' waits of 30-108 ms); against S2 alone both R runs are 5-6% worse. R equals
+         S2 over the loads (6.43/6.43 against 6.46 s) and wins at L5 (1,122/1,055 against
+         1,202/1,160 ms; driver allocations in its window 206/230 against 321/304 ms, 16 MiB
+         blocks 48/50 against 98/95), then loses after the loads: L4's 3-25 s 190/191 against
+         131/18 ms, L5's 408/581 against 355/146, the spot 443/601 against 374/178, mostly
+         uniform buffers / compute sync storage / fence waits, as r64's #1571 arm did there.
+       - Counters: 17,798/20,970 render targets retired (49/64 GB), collector deletions
+         13,770/14,021 against 31,452/29,918 (-55%), costly 5,271/5,778 against 6,768/5,854,
+         images created +10%, 4,983/5,260 images over stale pages started from zero (cleared
+         on the GPU, look unchecked), the scan 7-8 us a frame (at most 68).
+       - Runs needed (80% power, two-sided 5%): 57 per arm, 55 more each, at -0.47 s and the
+         pooled SD 0.88 s (S 1.25, R 0.05; 113 at S's SD); without L5's window 19, 17 more
+         (38). A true 10% effect needs 14-16 (27-32). The observed gain is under the 10% bar,
+         so more runs would at best confirm what the rule doesn't adopt; a retry, at 3.2 GHz,
+         would start with three alternating pairs to see whether S1 was an outlier, the spot
+         counted on its own.
+     - Force maximum clocks off (OFF), at the held clock, removes TurboMode's loop and device,
+       not a clock state, and changed nothing measurable: from L1 7.64 s against 9.62/7.86 (run
+       last, as the totals fell in play order; ABBA cancels that for #1571, not for OFF); L5's
+       transition / tail / 3-25 s 519/657/165 ms against 512/689/355 and 510/650/146; the 10 s
+       after L5 21 frames / 0.70 s against 39/1.02 and 25/0.81; the spot 193 ms against
+       374/178; matched back work +0.5%. r64's wait-bound spot shrank in all five r66 runs
+       (10 s after L5: uniform buffers / compute sync storage / fence 36-83 / 3-60 / 6-98 ms
+       against 366-681 / 226-640 / 148-243; excess 0.70-1.10 against 1.85-3.26 s), so the
+       probe, the FSR stage timestamps and the heap trace (on in all five) are cleared, and the
+       loop at ~1.8 GHz. Left: the forced 3.2 GHz state, or r64 code that merge 5, r65 or r66
+       changed. Strength: none on the 3.2 GHz state; fairly strong against the loop, probe and
+       timestamps at this clock (L5's tail + 3-25 s r64 3,287 ms mean, SD 1,038, against r66
+       965, SD 152; Welch t 4.4); nothing on a small loop effect (one run). Settle it at 3.2
+       GHz: trace-smooth on, off, off, on, on, off (#1571 off); 'on' >= 1.8 s and 'off' <= 1 s
+       in the 10 s after L5 in every pair means the forced clock (3 a side apart: rank p 0.05).
+     - r66 against r64 (S = r64 M's items minus #1571, plus merge 5 and the 16 MiB stacks; GPU
+       1.79 against 3.19 GHz, CPU 3% slower): from L1 8.74 s against r64 S 13.01 (-33%) and
+       r64 M 9.03 (-3%); without L5's window 8.49 against 12.01 (-29%) and 6.54 (+30%): S
+       matches r64 M only because the spot after L5 is gone. Loads (transition + tail, five)
+       7.44/6.46 s against 10.76/11.11 (r64 S) and 5.51/5.50 (r64 M), 73% of the S-to-M gain
+       kept; against r64 M L1 +4%, L2 +45%, L3 +84%, L4 +82%, L5 +35%.
+       - The defaults work by their counters: FSR built at the title (193-197 ms, r64 M
+         154-155), output check passed; the reserve reused 190-193 blocks (3.5-3.6 GB) at L1;
+         the ring 2,511-2,726 uploads a session, 4-5 refused (512 MiB is still the next step);
+         staging_create in L1's transition 7-8 ms (r64 S 68-72).
+       - Slower is GPU or driver work: L1's transition back 1,292/1,301 ms against 1,183/1,123
+         (texture upload 654/641 against 526/522, image_create 877/872 against 745/743), L1's
+         967 MiB allocation 28.1-28.3 against 19.4-19.9 ms, dedicated allocations in the load
+         windows ~920-980 against ~830-850 ms, the reserve made in 181-196 against 145-147 ms;
+         steady fps -6 to -11%, GPU busy +12-17%. Back work at matched draws +3.5-3.9% against
+         r64 M, +0.5-0.9% in cycles: merge 5 and the stacks cost the back nothing visible.
+       - Windows lowered the VMA heap 0 budget from 15,207 to 13,250-13,291 MiB at usage peaks
+         over ~11.2 GB (four runs; r64 peaked at 11.0-11.1 and never dipped), usage 1.4-2.1 GB
+         under it. Merge 5 removed 'Page table block ids are exhausted' (L3 in every r64 and r63
+         run); one new error kind, 'Image alias should have been flipped', once in S2 (#1571
+         off). Unchanged: 16 + 16 unmapped reads at L5, the route's 10.025-10.027 s periodic
+         spike (17-19 frames, 465-532 ms; sitting 1's 5.027 s fountain grid doesn't show here),
+         clean exits.
+     - Analysts: A and B agree on every load, class total, per-load figure and counter; the
+       judge's parser reproduces them and r64's 207/224/175/141 frames. Corrected: B's -6%
+       against r64 M is -3%; A's S1 L2 tail is 24 frames / 756 ms of excess, not 25 / 926; A's
+       S pairs run S2/S1 (collector deletions S1 31,452, S2 29,918; r64's spot M1 3,798, S1
+       1,148); B's 'the reserve's limit fell to 0 as Windows cut the budget' holds for S2, not
+       R1 (15,207 throughout, 0 at L3). Back us a draw differs by the draw average (r64's
+       per-second mean; frame-weighted is 2-12% higher), 50/100/250 counts by window.
+     - Next: the GPU clock (GPU-Z in play; the Radeon Developer Panel and its service's clock
+       mode; Adrenalin Tuning limits; a reboot; with the setting on, the first 'GPU clock probe
+       in 10 s' line at the title must read ~3,380 MHz; r64's package a minute at the title
+       tells a system hold from a build one), then the Force maximum clocks A/B, then any GPU
+       A/B.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
