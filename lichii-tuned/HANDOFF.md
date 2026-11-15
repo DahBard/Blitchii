@@ -3156,6 +3156,26 @@ Own changes:
        in 10 s' line at the title must read ~3,380 MHz; r64's package a minute at the title
        tells a system hold from a build one), then the Force maximum clocks A/B, then any GPU
        A/B.
+   - r67 (2026-11-15) = tuned4 089853e566 (r22-merge-nx2f, 15 commits on r66), from three
+     reviewed branches:
+     - r67-cleanup: native float atomics (EDEN_NX2_NATIVE_FLOAT_ATOMICS, with VK_EXT_shader_atomic_float)
+       and the lazy TFB barrier (LICHII_TFB_BARRIER_LAZY) removed with ab-43/ab-44 (r66 sitting 1:
+       DROP); Force maximum clocks in the recommended settings (recommended_settings.h).
+     - r67-hitch: the 4.157 s frame in perf-trace-noprofile was EDEN_DKB_FRAME_TRACE's per-draw
+       timestamp read (~12.5 ms on the submitting thread, every 4th sample at ~1.04 s); a thread
+       of its own reads them now. Title-screen launchers for the 5.027 s hitch (title-default,
+       title-no-early-context, title-slim-off, title-native, title-fsr3; title-fsr3 also has
+       RGBA16F output like slim-off).
+     - r67-bench (Phase 1 of lichii-tuned/ab-automation-plan.md): Fritchii's live switch slots
+       (Frizti's 93487071d5 and v5.8.4, credited), the debug server's switch and mark methods,
+       switch changes reverted when their client disconnects or the game stops, LICHII_AB_NULL and
+       LICHII_AB_BURN_US (positive control), the 'Environment in effect' and 'Force maximum
+       clocks: running/skipped (reason)' boot lines, driver pipeline builds on the 'Worst frame in
+       the last 10 s' line, EDEN_NX2_DEBUG_RING=0. Slots 8, 9, 18, 29, 35, 42, 43 stay boot-only.
+     - Kept: #1571 off (inconclusive), r64's routing helpers on AMD (ab-47's A/B waits for 3.2 GHz).
+     - Checks: MinGW syntax check of every changed file (vk_pipeline_cache.cpp: the known -Wshadow
+       only), the debug server and environment tests under ASan/UBSan in a Linux harness, the
+       patch applied to r22-up-5 equals tuned4's tree (370 files).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
