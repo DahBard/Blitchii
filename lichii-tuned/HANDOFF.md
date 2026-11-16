@@ -3180,6 +3180,17 @@ Own changes:
        its symbols, kept 3 days); unit tests run #8: 1,528 test cases, 1,525 passed and 3 skipped
        (71,366,152 assertions), the clock trace passed, and the stack overflow check reported all
        four modes (eden_crash.dmp 16.8 MB each).
+   - Lichii Bench, first automated sitting (owner, 2026-11-15 evening; bench v1.1 on r66; the
+     A/A plan: W, then N-a N-b N-b N-a | N-b N-a N-a N-b, perf-trace-noprofile in both arms,
+     zip 43f0a15f): all 9 runs ok, unattended. GPU back at ~3.15 GHz (probe 3,126-3,195 MHz:
+     the hold is gone). analyze.py, matched windows: fps 54.72-55.99 (arm means 55.37/55.36),
+     frame 18.06/18.07 ms, 1% low 36.7/36.1, GPU busy 12.75/12.79 ms, back work 13.74/13.74 ms,
+     2,687 draws a frame. Both A/A rules give DROP (GPU busy -0.045 ms, frame -0.006 ms): the bench
+     finds no difference where there is none. Per-run fps spread ~0.45 (0.8%), about half the
+     manual sittings'. r66 at the fountain matches r64 now (r64 matched windows 55.67/54.53).
+     Flags to fix: 'the screen changed during the window' (32-48 bits) in every run, from NPCs
+     walking by the fountain; the analyzer's arrival-based window starts ~6 s before the
+     runner's (it should use the runner's window).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
