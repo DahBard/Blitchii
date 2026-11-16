@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)",
+      "Bash(git worktree:*)",
+      "Bash(git fetch:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git merge:*)",
+      "Bash(git apply:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(bash lichii-tuned/local/build-local.sh:*)",
+      "Bash(C:/msys64/usr/bin/bash.exe:*)",
+      "Bash(python -I lichii-tuned/bench/analyze.py:*)",
+      "Bash(python -I lichii-tuned/bench/logscan.py:*)",
+      "Bash(python -I -m unittest:*)",
+      "Bash(bench.bat run:*)",
+      "Bash(bench.bat validate:*)",
+      "Bash(bench.bat zip:*)",
+      "Bash(bench.bat prepare:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Read(C:/LichiiBench/**)",
+      "Read(C:/lx/**)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(gh release:*)",
+      "Bash(gh workflow run:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Read(~/AppData/Roaming/lichii/nand/**)",
+      "Edit(~/AppData/Roaming/lichii/**)",
+      "Write(~/AppData/Roaming/lichii/**)"
+    ]
+  }
+}

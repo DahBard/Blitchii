@@ -13,6 +13,8 @@ on:
       - ".github/workflows/lichii-tuned.yml"
       # The bench and its queue aren't in the package: a queued plan must not start a build.
       - "!lichii-tuned/bench/**"
+      # The local session's goal files and build script aren't in the package either.
+      - "!lichii-tuned/local/**"
   workflow_dispatch:
     inputs:
       variant:
