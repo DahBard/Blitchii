@@ -155,15 +155,13 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
     bool high_priority_mode = false;
     bool aggressive_mode = false;
     bool evict_old_costly = false;
-    bool evict_bad_overlaps = false;
-    u64 mode_age = 0;
     u64 ticks_to_destroy = 0;
     size_t num_iterations = 0;
     const auto Configure = [&](bool allow_aggressive) {
         high_priority_mode = out_of_memory || total_used_memory >= expected_memory;
         aggressive_mode =
             allow_aggressive && (out_of_memory || total_used_memory >= critical_memory);
-        mode_age = aggressive_mode ? 10ULL : high_priority_mode ? 25ULL : 50ULL;
+        const u64 mode_age = aggressive_mode ? 10ULL : high_priority_mode ? 25ULL : 50ULL;
         // EDEN_NX2_TC_MIN_AGE=<frames>: keep images used more recently while there is room
         // (thrash tests).
         static const u64 min_age = [] {
@@ -174,37 +172,21 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
             EvictionAge(mode_age, min_age, total_used_memory, retention_limit, out_of_memory);
         num_iterations = aggressive_mode ? 40 : (high_priority_mode ? 20 : 10);
     };
-    const auto CanEvict = [this, &high_priority_mode, &aggressive_mode, &evict_old_costly,
-                           &evict_bad_overlaps](ImageId image_id,
-                                                bool* out_must_download = nullptr) {
-        const auto& image = slot_images[image_id];
-        if (True(image.flags & ImageFlagBits::IsDecoding) ||
-            (evict_bad_overlaps && False(image.flags & ImageFlagBits::BadOverlap))) {
-            return false;
-        }
-        const bool must_download =
-            IsDownloadable(image) && False(image.flags & ImageFlagBits::BadOverlap);
-        if (out_must_download != nullptr) {
-            *out_must_download = must_download;
-        }
-        if ((!aggressive_mode && !evict_old_costly &&
-             True(image.flags & ImageFlagBits::CostlyLoad)) ||
-            (!high_priority_mode && must_download)) {
-            return false;
-        }
-        return true;
-    };
-    const auto Cleanup = [this, &num_iterations, &high_priority_mode, &aggressive_mode, &CanEvict,
-                          &evict_bad_overlaps, out_of_memory](ImageId image_id) {
+    const auto Cleanup = [this, &num_iterations, &high_priority_mode, &aggressive_mode,
+                          &evict_old_costly, out_of_memory](ImageId image_id) {
         if (num_iterations == 0) {
             return true;
         }
-        bool must_download = false;
-        if (!CanEvict(image_id, &must_download)) {
-            return false;
-        }
         --num_iterations;
         auto& image = slot_images[image_id];
+        if (True(image.flags & ImageFlagBits::IsDecoding)) {
+            return false;
+        }
+        const bool must_download = IsDownloadable(image) && False(image.flags & ImageFlagBits::BadOverlap);
+        if ((!aggressive_mode && !evict_old_costly && True(image.flags & ImageFlagBits::CostlyLoad)) ||
+            (!high_priority_mode && must_download)) {
+            return false;
+        }
         if (must_download) {
             auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
             const auto copies = FullDownloadCopies(image.info);
@@ -219,21 +201,11 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
         if (True(image.flags & ImageFlagBits::Tracked)) {
             UntrackImage(image, image_id);
         }
-        if constexpr (requires(const Image& img) { img.MemoryBlock(); }) {
-            const auto block = image.MemoryBlock();
-            if (block.block != 0) {
-                const auto it = block_image_bytes.find(block.block);
-                if (it != block_image_bytes.end()) {
-                    it->second -= (std::min)(it->second, block.size);
-                }
-            }
-        }
         ++(True(image.flags & ImageFlagBits::CostlyLoad) ? gc_costly_deletes : gc_deletes);
         trace_delete_flags = static_cast<u32>(image.flags);
         trace_delete_downloaded = must_download;
         UnregisterImage(image_id);
-        trace_delete_reason = evict_bad_overlaps   ? "gc-bad-overlap"
-                              : aggressive_mode    ? "gc-aggressive"
+        trace_delete_reason = aggressive_mode      ? "gc-aggressive"
                               : high_priority_mode ? "gc-high-priority"
                                                    : "gc";
         DeleteImage(image_id, image.scale_tick > frame_tick + 5);
@@ -255,19 +227,16 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
     // used). Among the oldest candidates (8 per image this pass may delete), those in the
     // emptiest blocks go first, so blocks drain and go back to the driver; placement already
     // prefers the fullest blocks (best fit). Images with memory of their own sit in the middle.
-    const auto Collect = [&](u64 age_override = 0) {
-        const u64 required_age = age_override != 0 ? age_override : ticks_to_destroy;
-        if (num_iterations == 0 || frame_tick < required_age) {
+    const auto Collect = [&] {
+        if (frame_tick < ticks_to_destroy) {
             return;
         }
-        const u64 last_tick = frame_tick - required_age;
+        const u64 last_tick = frame_tick - ticks_to_destroy;
         if constexpr (requires(const Image& image) { image.MemoryBlock(); }) {
             std::vector<ImageId> candidates;
             const size_t limit = num_iterations * 8;
             lru_cache.ForEachItemBelow(last_tick, [&](ImageId image_id) {
-                if (CanEvict(image_id)) {
-                    candidates.push_back(image_id);
-                }
+                candidates.push_back(image_id);
                 return candidates.size() >= limit;
             });
             if (candidates.empty()) {
@@ -308,23 +277,13 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
         }
     };
     Configure(false);
-    // Images newer ones partly overwrote (BadOverlap: their bytes belong to the newer images, so
-    // they are dropped without a download) get the mode's age, not the retention floor. Ocarina
-    // allocates each frame's render targets at shifting offsets of a transient heap: in the
-    // Skulltula House about 9 a frame, kept 150 frames, filled 16 GB of a 24 GB card (#1755).
-    // Same pass as kraibse 662af0bfaf's EDEN_NX2_TC_STALE_AGE, at the mode's age.
-    if (ticks_to_destroy > mode_age) {
-        evict_bad_overlaps = true;
-        Collect(mode_age);
-        evict_bad_overlaps = false;
-    }
     static const u64 old_age = [] {
         const char* value = std::getenv("EDEN_NX2_TC_OLD_AGE");
         return value != nullptr ? std::strtoull(value, nullptr, 10) : 1800ULL;
     }();
     if (high_priority_mode && old_age != 0 && frame_tick > old_age) {
         evict_old_costly = true;
-        Collect(old_age);
+        lru_cache.ForEachItemBelow(frame_tick - old_age, Cleanup);
         evict_old_costly = false;
     }
     Collect();
