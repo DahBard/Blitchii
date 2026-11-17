@@ -2557,31 +2557,10 @@ GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline) noexc
     const auto& draw_state = maxwell3d->draw_manager.draw_state;
     const bool native = maxwell3d->GetNativeMacroEngine().native_turing;
     const NativePendingMode mode = native ? NativeMode() : NativePendingMode::Wait;
-    const auto& regs = maxwell3d->regs;
-    // A native draw counts as depth-tested only when every render target it writes color into
-    // was first written in an earlier frame, which the title redraws every frame: Mario Kart World
-    // bakes terrain once with depth-tested draws (b7980efd7), and a bound depth buffer alone
-    // doesn't test (Eglantine #874). Mesh draws always wait.
-    const auto writes_color = [&regs](u32 rt_index) {
-        return rt_index < Maxwell::NumRenderTargets &&
-               regs.rt[rt_index].format != Tegra::RenderTargetFormat::NONE &&
-               regs.color_mask[regs.color_mask_common ? 0 : rt_index].raw != 0;
-    };
-    const bool depth_tested =
-        native ? mode != NativePendingMode::Wait && regs.zeta_enable != 0 &&
-                     regs.depth_test_enable != 0 && !regs.IsMeshEnabled() &&
-                     ColorWritesHaveHistory(
-                         std::min<u32>(regs.rt_control.count,
-                                       static_cast<u32>(Maxwell::NumRenderTargets)),
-                         [&regs](u32 i) { return regs.rt_control.Map(i); }, writes_color,
-                         [this](u32 rt_index) {
-                             return texture_cache.ColorTargetWrittenBeforeThisFrame(rt_index);
-                         })
-               : regs.zeta_enable != 0;
     // Native draws are judged by the heuristic only when a mode other than Wait is chosen.
     const bool can_discard = CanDiscardPendingDraw(
-        native, depth_tested, draw_state.draw_element_count, draw_state.draw_element_count,
-        native && mode != NativePendingMode::Wait);
+        native, maxwell3d->regs.zeta_enable != 0, draw_state.draw_element_count,
+        draw_state.draw_element_count, native && mode != NativePendingMode::Wait);
     bool discard = can_discard;
     if (native) {
         switch (DecideNativePending(mode, can_discard, native_wait_budget_us)) {

@@ -21,9 +21,9 @@ Native work follows `native_async_draws` (Wait, Bounded or Skip) and only skips 
 earlier frame's output: skipping leaves that output a frame old, while skipping work that fills
 something once would lose it for the session.
 
-- A draw may be skipped only when it is depth-tested, writes color, is not a mesh draw, and its
-  render target 0 was first written in an earlier frame (Eglantine #874). Mario Kart World bakes
-  terrain once with depth-tested draws; Star Fox draws each font glyph once without depth.
+- A draw may be skipped by the legacy heuristic above (a bound depth buffer, or both draw counts
+  over six). This build leaves out #2104's stricter native-draw guard (depth test, color write, no
+  mesh, render targets first written in an earlier frame).
 - A dispatch (`PipelineCache::SkipUnbuiltDispatch`) may be skipped only when every byte of every
   buffer range it would mark written already holds GPU writes (a DMA clear or CPU write removes
   them), and every storage image level it writes was last written by a shader through a storage

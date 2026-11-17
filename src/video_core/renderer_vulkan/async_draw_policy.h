@@ -12,8 +12,7 @@ namespace Vulkan {
 /// Whether a draw whose graphics pipeline is still building may be skipped (asynchronous
 /// shaders) instead of waiting for the build.
 /// @param native         The draw comes from a Switch 2 (native Turing macro) program.
-/// @param depth_enabled  The depth test is on for the draw. For a native draw also: it writes color
-///                       only into render targets first written in an earlier frame.
+/// @param depth_enabled  The depth test is on for the draw.
 /// @param index_count    Index count of the draw.
 /// @param vertex_count   Vertex count of the draw.
 /// @param discard_native Let native draws follow the heuristic too (EDEN_NX2_ASYNC_DISCARD=1).
