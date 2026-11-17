@@ -163,6 +163,16 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   and build folders only, stop on owner input and resume when idle, F3 aborts, never delete old
   builds, builds only from this repository's CI). GitHub CLI and Git are installed and signed in
   on his PC (account DahBard, scopes repo, workflow, gist, read:org).
+- 2026-11-16 (owner): local builds and the local goal loop are dropped ("We will be forgoing our
+  normal development, and we will not be compiling locally"); builds stay on this repository's CI.
+- 2026-11-17 (owner): "look through all of Lichii's commits since we last merged with them and
+  integrate the ones that will benefit us": merge 6, upstream nx2 907d54757b without 22 commits
+  (HANDOFF), branch `r22-merge-nx2g`; the base under the patch is now `4cfc1d7273` (`r22-up-6`);
+  r68. Then: "look at pr 1944, make it work for our build" / "We just need to make it work on OOT
+  and on Windows" / "prioritize the NVN direct port for OOT after the merge and also take a look
+  at pr2116": PR 1944 (the NVN direct renderer, draft) for Ocarina on Windows comes first, opt-in
+  and costing nothing when off (plan in HANDOFF); PR 2116 (fast draws across vertex stream
+  changes) and the six upstream commits after 907d54757b come with it.
 - Scheduled tasks ("Resume Lichii work") resumed this session after usage cut-offs from
   2026-11-12 to 2026-11-15. 2026-11-15 (owner): "Stop all reminders to check for usage renewals":
   none is active, and none is to be created again.

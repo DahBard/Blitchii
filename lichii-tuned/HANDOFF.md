@@ -51,14 +51,15 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   trigger in their 579 workflow files matches `upstream/...`). `upstream-nx2` is a stray copy of
   `upstream/nx2` that this session's git proxy can't delete; delete it on GitHub. This session's
   proxy also refuses tag pushes and more than about 20 refs per push.
-- Since 2026-11-15 (r65): branch `tuned` = upstream nx2 `58e418db65` without nine commits,
-  branch `r22-up-5` (`0db03a262f`: r22-up-no1486 merged with `58e418db65` at upstream's tree,
-  then the nine reverts; merged in `7675f3f8c`; before it `85a2cc0ac7` in `ada9ce77c`, build
+- Since 2026-11-17 (r68): branch `tuned` = upstream nx2 `907d54757b` without 22 commits,
+  branch `r22-up-6` (`4cfc1d7273`: r22-up-5 merged with `907d54757b` at upstream's tree, then
+  16 reverts; merged in `a93b9dc03b`; before it r22-up-5 `0db03a262f` = r22-up-no1486 merged
+  with `58e418db65` at upstream's tree and nine reverts, in `7675f3f8c`; `85a2cc0ac7` in `ada9ce77c`, build
   171 `c169856090` in `8619a1df3`, `2eb5f081c` in `526c0ab1c`, `17baed716` in `2d9ea59c5`) + the
   workflow + this folder. Round 21's Fritchii tree (branch `tuned5`) stays in the history. The
-  patch is `git diff --binary 0db03a262f tuned4` (358 files, 2.9 MB; r66), backed up in
+  patch is `git diff --binary 4cfc1d7273 tuned4` (369 files, 3.1 MB; r68), backed up in
   `tuned4.bundle` (`git fetch lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has
-  `0db03a262f`). Since upstream's rename the build target is `lichii` and the options are
+  `4cfc1d7273`). Since upstream's rename the build target is `lichii` and the options are
   `-DLICHII_*`. Variants: `pgo`, `pgo-lto` and `pgo-train`;
   `msvc` is off again. The 'AMD FidelityFX libraries' step puts AMD's signed FSR and frame
   generation DLLs (SDK v2.4.0, SHA-256 checked) next to lichii.exe for CheezyEmu's FSR port.
@@ -124,10 +125,11 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   `04e8a8d2a`, branch `r22-merge-nx2c`, r61's launcher cleanup `c73800765`, and merge 4
   (`r22-up-no1486` in `a8788276c`), branch `r22-merge-nx2e`, and the tests' stack `cf51fcc85`,
   and merge 5 with r65 (`r22-up-5` in `1176150cc`) up to `c5380c86a`, branch `r22-merge-nx2f`,
-  and r66 up to `3694d1a62a` on the same branch; pushing it doesn't trigger builds).
+  and r66 up to `3694d1a62a` on the same branch, and merge 6 (`r22-up-6` in `c633d1e16f`) up to
+  `f96ad03d5a`, branch `r22-merge-nx2g`; pushing it doesn't trigger builds).
   `lichii-tuned/tuned4.bundle` holds the same history as a backup (`git fetch
-  lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has `0db03a262f`, as `tuned` does).
-  The patch is `git diff --binary 0db03a262f tuned4` (358 files, 2.9 MB); check it
+  lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has `4cfc1d7273`, as `tuned` does).
+  The patch is `git diff --binary 4cfc1d7273 tuned4` (369 files, 3.1 MB); check it
   with `git apply --check` on a clean `tuned` checkout before committing it. To move to a newer
   upstream: merge it into tuned4 and into `tuned`, then diff tuned4 against the merged upstream
   commit. An upstream change we leave out (merge 4: #1486; merge 5: nine) is reverted on a
@@ -3191,6 +3193,42 @@ Own changes:
      Flags to fix: 'the screen changed during the window' (32-48 bits) in every run, from NPCs
      walking by the fountain; the analyzer's arrival-based window starts ~6 s before the
      runner's (it should use the runner's window).
+   - Merge 6 (2026-11-17, owner: "look through all of Lichii's commits since we last merged with
+     them and integrate the ones that will benefit us"): upstream nx2 58e418db65..907d54757b, 172
+     commits. r22-up-6 (4cfc1d7273) = r22-up-5 merged with 907d54757b at upstream's tree
+     (4e957c6ee1), then 16 revert commits for 22 left-out commits. Review: three workflows, a
+     reviewer and a skeptic per six commits (129 commits that touch the GPU, shaders, caches,
+     memory or Ocarina; 43 peripheral ones come with the merge), plus a re-judgement of merge 5's
+     nine (scratchpad m6/all-verdicts.json, oldnine.json, merge-notes.txt).
+     - Left out (reverted on r22-up-6): merge 5's nine again (#1731 with its follow-up #1845:
+       uncapped LRU walks on the back every frame, our capped #976 pass does #1845's job; #1641;
+       #1137 with #1778: a first-word check before every native dispatch for 1.0 programs only,
+       #1875/#1995/#1941 adapted to stay; #1655/#1702; #1296; #1723 with #1907; #1736: our #805
+       list path notes DMA copies and clears as host writes; #1744); #2012 (a key copy and lookup
+       per mesh draw; our KeyedAttributeTypes already removes the split); #1795 (8-64x early
+       read-back limits that duplicate our preflush's downloads on the back); #2024's render half
+       (an uncached colour feedback check on every draw; its video half stays); upstream's ports of
+       our list path and QMD view, #1821, #1830, #1850, #1953, #1987 (ours kept, as in merge 4;
+       #1830's owed-word landing adds a map lookup per uniform bind and read traps).
+     - Taken, on our path: #1789 (write traps skip the texture cache lock on buffer-only pages),
+       #1812, #1997, #1963, #1870, #1906 (no mid-draw submits or aborts when descriptor or staging
+       memory runs out; deferred staging buffers out of the lookups), #2007 (draw-written list pages
+       from a current copy past the sync), #2006 (list copy flushes deferred like fences; unmeasured
+       here, about 550 submits/s at the fountain; ABAB it if 1% lows move), #1780, #1820, #1807,
+       #1853, #1941, #1890, #1915, #1793, #1981, #1901, #1938 (a device loss now ends the process:
+       no crash dump for that case), #1808 (its safe reads only at GPU accuracy High), #1803 (older
+       sessions' pipelines in the background prebuild; with preload-all on it changes little), the
+       rest neutral. #1871: our FSR hook recognises Ocarina's passes by native key too.
+     - Ported from left-out #1830 into our list path (13281fe9ed): the placeholder slot bound, holds
+       for slots a commit's tagged writes name, MarkUsage before the list-word snapshot.
+     - Branch r22-merge-nx2g: 45 conflicted files resolved by five agents by file group, each with
+       a skeptic; two reviewers over the 53 files both sides changed that merged cleanly (fixed:
+       r64's AMD global memory helpers now fill upstream's global_memory_functions[0], 9681281e19;
+       upstream's MinGW PROCESS_MEMORY_COUNTERS_EX2 taken). The TryOcarinaDlss per-draw No
+       sharpening tracker runs only while the bypass can run (FSR on: a frame compare per draw).
+     - Checks: Linux syntax check of 748 files (721 pass, 7 fail on tuned4 too), MinGW of 38 (36,
+       2 pre-existing), the patch applied to r22-up-6 equals tuned4's tree (369 files).
+   - r68 = tuned4 f96ad03d5a, base under the patch r22-up-6 (4cfc1d7273): merge 6.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
