@@ -58,9 +58,9 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   with `58e418db65` at upstream's tree and nine reverts, in `7675f3f8c`; `85a2cc0ac7` in `ada9ce77c`, build
   171 `c169856090` in `8619a1df3`, `2eb5f081c` in `526c0ab1c`, `17baed716` in `2d9ea59c5`) + the
   workflow + this folder. Round 21's Fritchii tree (branch `tuned5`) stays in the history. The
-  patch is `git diff --binary 4cfc1d7273 tuned4` (369 files, 3.1 MB; r68), backed up in
+  patch is `git diff --binary 0ba2e31256 tuned4` (512 files, 6.2 MB; r69), backed up in
   `tuned4.bundle` (`git fetch lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has
-  `4cfc1d7273`). Since upstream's rename the build target is `lichii` and the options are
+  `0ba2e31256`). Since upstream's rename the build target is `lichii` and the options are
   `-DLICHII_*`. Variants: `pgo`, `pgo-lto` and `pgo-train`;
   `msvc` is off again. The 'AMD FidelityFX libraries' step puts AMD's signed FSR and frame
   generation DLLs (SDK v2.4.0, SHA-256 checked) next to lichii.exe for CheezyEmu's FSR port.
@@ -127,10 +127,11 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   (`r22-up-no1486` in `a8788276c`), branch `r22-merge-nx2e`, and the tests' stack `cf51fcc85`,
   and merge 5 with r65 (`r22-up-5` in `1176150cc`) up to `c5380c86a`, branch `r22-merge-nx2f`,
   and r66 up to `3694d1a62a` on the same branch, and merge 6 (`r22-up-6` in `c633d1e16f`) up to
-  `f96ad03d5a`, branch `r22-merge-nx2g`; pushing it doesn't trigger builds).
+  `f96ad03d5a`, branch `r22-merge-nx2g`, merge 6b (branch `r22-merge-nx2h`) and PR 1944 (branch
+  `r22-nvn-direct`) up to `426c65a64e`; pushing it doesn't trigger builds).
   `lichii-tuned/tuned4.bundle` holds the same history as a backup (`git fetch
-  lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has `4cfc1d7273`, as `tuned` does).
-  The patch is `git diff --binary 4cfc1d7273 tuned4` (369 files, 3.1 MB); check it
+  lichii-tuned/tuned4.bundle tuned4:tuned4` in a clone that has `0ba2e31256`, as `tuned` does).
+  The patch is `git diff --binary 0ba2e31256 tuned4` (512 files, 6.2 MB); check it
   with `git apply --check` on a clean `tuned` checkout before committing it. To move to a newer
   upstream: merge it into tuned4 and into `tuned`, then diff tuned4 against the merged upstream
   commit. An upstream change we leave out (merge 4: #1486; merge 5: nine) is reverted on a
@@ -3270,7 +3271,9 @@ Own changes:
        in direct mode (none of RasterizerVulkan runs there; 1.5-3 weeks).
      - Off-path: the parity run vs r68 (perf-trace-noprofile at the fountain) also checks the PGO
        profile, which no longer matches the functions the PR changed.
-   - r69 = r22-nvn-direct with merge 6b merged (3c1d6cfa96), base under the patch r22-up-7.
+   - r69 = tuned4 426c65a64e (r22-nvn-direct with merge 6b merged in 3c1d6cfa96, and the test
+     helper fix), base under the patch r22-up-7 (0ba2e31256); 512 files. buffer_cache_ports run
+     natively: 71 of 71 cases pass (70 of 71 without the helper fix).
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host

@@ -173,6 +173,8 @@ Then (owner, 2026-11-12 evening, after testing r58: "the best looking and smooth
   at pr2116": PR 1944 (the NVN direct renderer, draft) for Ocarina on Windows comes first, opt-in
   and costing nothing when off (plan in HANDOFF); PR 2116 (fast draws across vertex stream
   changes) and the six upstream commits after 907d54757b come with it.
+  r69 (tuned4 `426c65a64e`, base `0ba2e31256` = `r22-up-7`): merge 6b + PR 2116 + PR 1944 stage 1
+  (opt-in, nvn-direct*.bat launchers).
 - Scheduled tasks ("Resume Lichii work") resumed this session after usage cut-offs from
   2026-11-12 to 2026-11-15. 2026-11-15 (owner): "Stop all reminders to check for usage renewals":
   none is active, and none is to be created again.
