@@ -51,9 +51,10 @@ researching other Switch 2 emulator forks for what Lichii lacks, especially on A
   trigger in their 579 workflow files matches `upstream/...`). `upstream-nx2` is a stray copy of
   `upstream/nx2` that this session's git proxy can't delete; delete it on GitHub. This session's
   proxy also refuses tag pushes and more than about 20 refs per push.
-- Since 2026-11-17 (r68): branch `tuned` = upstream nx2 `907d54757b` without 22 commits,
-  branch `r22-up-6` (`4cfc1d7273`: r22-up-5 merged with `907d54757b` at upstream's tree, then
-  16 reverts; merged in `a93b9dc03b`; before it r22-up-5 `0db03a262f` = r22-up-no1486 merged
+- Since 2026-11-17 (r69): branch `tuned` = upstream nx2 `8c457aba08` without 23 commits,
+  branch `r22-up-7` (`0ba2e31256`: r22-up-6 merged with `8c457aba08`, plus #2104's draw half
+  reverted; merged in `a9518ba2da`; r68's r22-up-6 `4cfc1d7273` = r22-up-5 merged with
+  `907d54757b` at upstream's tree, then 16 reverts, in `a93b9dc03b`; before it r22-up-5 `0db03a262f` = r22-up-no1486 merged
   with `58e418db65` at upstream's tree and nine reverts, in `7675f3f8c`; `85a2cc0ac7` in `ada9ce77c`, build
   171 `c169856090` in `8619a1df3`, `2eb5f081c` in `526c0ab1c`, `17baed716` in `2d9ea59c5`) + the
   workflow + this folder. Round 21's Fritchii tree (branch `tuned5`) stays in the history. The
@@ -3229,6 +3230,47 @@ Own changes:
      - Checks: Linux syntax check of 748 files (721 pass, 7 fail on tuned4 too), MinGW of 38 (36,
        2 pre-existing), the patch applied to r22-up-6 equals tuned4's tree (369 files).
    - r68 = tuned4 f96ad03d5a, base under the patch r22-up-6 (4cfc1d7273): merge 6.
+     CI run #8 built it; unit tests run #9: 1,721 cases, 1 failed ("Command page batch publishes
+     only completed matching write generations", buffer_cache_ports.cpp:849, Synced instead of
+     Unknown). #2007 removed Nx2ReadListCopy's draw_written early return, so our WordsClean
+     shortcut now answers draw-written pages; production's Nx2NoteListWrite marks the draw's words
+     first, the test's DrawWrite helper didn't. r69 fixes the helper, not the code.
+   - Merge 6b (2026-11-17): upstream nx2 8c457aba08, the six commits after 907d54757b (#2110 cache
+     log read in chunks: a >2 GiB cache aborted the boot on MinGW's _read; #2098 a waiter runs the
+     driver stage itself; #2100; #2103, NVIDIA only; #2104 skip unbuilt Switch 2 compute dispatches
+     whose outputs the GPU already wrote, Bounded; #2105 async shaders on by default). r22-up-7
+     (0ba2e31256) = r22-up-6 merged with them, plus a revert of #2104's native-draw guard (built on
+     #1296, left out). Branch r22-merge-nx2h. PR 2116 (zortos293, open; 0f979a4935) on our side:
+     stream word 3 (divisor) light too, with our c899e82787 (word 0, #1216) folded into upstream's
+     g_dynamic_vertex_streams; EDEN_NX2_TEST_1216=0 still turns both off. Reviews: a reviewer and a
+     skeptic per commit (journal wf_4d4af377-f35); shader_jobs, async_draw_policy,
+     native_pending_policy and texture_alias_ticks tests run natively, a fast-draw stand-in too.
+   - NVN direct (PR 1944, owner 2026-11-17: "make it work on OOT and on Windows", first priority):
+     the PR (draft, dzervas) pinned at fa16bb79de, merged into r68 on branch r22-nvn-direct
+     (ea5f4dde32), then ours: MinGW clang build (posix.h force-included for C, synchronization
+     linked, the shim's 51 POSIX names renamed under __MINGW32__: unrenamed, lld binds all of
+     lichii.exe's std::mutex/std::thread to the shim even with direct mode off; posix.h includes
+     time.h first for UCRT64's inline clock_gettime/nanosleep); nothing on the hot paths while
+     off (LICHII_NVN_LAB gate on the dma_pusher hunks, inline g_direct_mode in memory.cpp, the
+     halted-call SVC compare behind LICHII_NVN_DIRECT, per-session HDR state again, no lock per
+     present); Windows/AMD: fall back to GPU emulation when no pool import works (status bar),
+     a boot self-test of host-pointer imports (one-piece and two-piece MapBackingView views, the
+     backing view, private memory) that decides the import, MapBackingView commits its runs under
+     EDEN_NX2_SEC_RESERVE, virtual pools read through their page tables on Windows (always sparse,
+     writes to unmapped pages go to a sink), AMD's BuildsUnoptimized hashes in the replay's
+     compute pipelines, 16 MiB replay thread stacks. Launchers nvn-direct, -null, -nohang,
+     -commit, -trace. Reports in scratchpad m6/pr1944 (plan.md, study-*.md, nd1-*.md).
+     - Plan: ND1 (r69) answers whether AMD's driver imports the pool views, the graphics queue
+       count, and where Ocarina dies (cause A, most likely: host-lent command memory reaching
+       its 1 GiB cap because the game's out-of-memory callback never runs, hle_nvn.c:1099, "FATAL
+       NVN command memory"; cause B: a declared GPU hang, DM_VK_HANG_S). ND2: run the game's
+       callback in guest context (3-5 days; check the PR for an upstream fix first), or pool
+       import work if the imports are refused. ND3: is it faster here (OCuLink x4 crossing for
+       every pool read; device-local pools for CPU_NO_ACCESS). ND4, only after a clear win: FSR 4
+       in direct mode (none of RasterizerVulkan runs there; 1.5-3 weeks).
+     - Off-path: the parity run vs r68 (perf-trace-noprofile at the fountain) also checks the PGO
+       profile, which no longer matches the functions the PR changed.
+   - r69 = r22-nvn-direct with merge 6b merged (3c1d6cfa96), base under the patch r22-up-7.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
