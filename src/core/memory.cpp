@@ -36,6 +36,7 @@
 #include "core/hle/kernel/nx2_thread_stats.h"
 #include "core/memory.h"
 #include "video_core/gpu.h"
+#include "video_core/gpu_trace/recorder.h"
 #include "video_core/host1x/gpu_device_memory_manager.h"
 #include "video_core/host1x/host1x.h"
 #include "video_core/nx2_async_readback.h"
@@ -332,7 +333,9 @@ struct Memory::Impl {
     /// host range, nullptr otherwise. Every page of such a range stores the same offset; block ids
     /// can't prove it, since equal ids at the ends say nothing about a page remapped in between.
     [[nodiscard]] u8* GetSpan(const VAddr addr, const std::size_t size) const noexcept {
-        if (!AddressSpaceContains(*current_page_table, addr, size)) {
+        // An empty span at the exclusive end of the address space has no page-table entry.
+        if (!AddressSpaceContains(*current_page_table, addr, size) ||
+            addr >= (u64{1} << current_page_table->GetAddressSpaceBits())) {
             return nullptr;
         }
         const u64 first_page = addr >> LICHII_PAGEBITS;
@@ -359,6 +362,7 @@ struct Memory::Impl {
                 HandleRasterizerWrite(GetInteger(current_vaddr), copy_amount);
             }
             std::memcpy(ptr, reinterpret_cast<u8 const*>(buffer) + offset, copy_amount);
+            VideoCommon::GpuTrace::NoteCpuWrite(ptr, copy_amount);
         });
     }
 
@@ -373,6 +377,7 @@ struct Memory::Impl {
         [&](const Common::ProcessAddress current_vaddr, const std::size_t offset, const std::size_t copy_amount, u8* const ptr) {
             HandleRasterizerWrite(GetInteger(current_vaddr), copy_amount);
             std::memset(ptr, 0, copy_amount);
+            VideoCommon::GpuTrace::NoteCpuWrite(ptr, copy_amount);
         });
     }
 
@@ -801,10 +806,18 @@ struct Memory::Impl {
     template <typename T>
     inline void Write(Common::ProcessAddress vaddr, const T data) noexcept requires(std::is_trivially_copyable_v<T>) {
         const u64 addr = GetInteger(vaddr);
+        bool rasterizer_write = false;
         if (auto const ptr = GetPointerImpl(addr, [addr, data]() {
             LOG_ERROR(HW_Memory, "Unmapped Write{} @ {:#016x} = {:#016x}", sizeof(T) * 8, addr, u64(data));
-        }, [&]() { HandleRasterizerWrite(addr, sizeof(T)); }); ptr) [[likely]]
+        }, [&]() {
+            HandleRasterizerWrite(addr, sizeof(T));
+            rasterizer_write = true;
+        }); ptr) [[likely]] {
             std::memcpy(ptr, &data, sizeof(T));
+            if (rasterizer_write) [[unlikely]] {
+                VideoCommon::GpuTrace::NoteCpuWrite(ptr, sizeof(T));
+            }
+        }
     }
 
     template <typename T>
@@ -817,7 +830,9 @@ struct Memory::Impl {
             },
             [&]() { HandleRasterizerWrite(GetInteger(vaddr), sizeof(T)); });
         if (ptr) {
-            return Common::AtomicCompareAndSwap(reinterpret_cast<T*>(ptr), data, expected);
+            const bool stored = Common::AtomicCompareAndSwap(reinterpret_cast<T*>(ptr), data, expected);
+            VideoCommon::GpuTrace::NoteCpuWrite(ptr, sizeof(T));
+            return stored;
         }
         return true;
     }
@@ -831,7 +846,9 @@ struct Memory::Impl {
             },
             [&]() { HandleRasterizerWrite(GetInteger(vaddr), sizeof(u128)); });
         if (ptr) {
-            return Common::AtomicCompareAndSwap(reinterpret_cast<u64*>(ptr), data, expected);
+            const bool stored = Common::AtomicCompareAndSwap(reinterpret_cast<u64*>(ptr), data, expected);
+            VideoCommon::GpuTrace::NoteCpuWrite(ptr, sizeof(u128));
+            return stored;
         }
         return true;
     }
