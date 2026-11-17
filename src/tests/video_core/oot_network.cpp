@@ -18,9 +18,6 @@ TEST_CASE("Unused AA dispatch requires confirmed output replacement and a skippe
     CHECK_FALSE(ShouldSkipUnusedDispatch(PrepassProgramKey, true, true));
     CHECK_FALSE(ShouldSkipUnusedDispatch(NetworkProgramKey, true, true));
     CHECK_FALSE(ShouldSkipUnusedDispatch(OutputProgramKey, true, true));
-    for (const auto& output : BaseOutputPrograms) {
-        CHECK_FALSE(ShouldSkipUnusedDispatch(output.key, true, true));
-    }
 }
 
 TEST_CASE("The tonemap candidate is a draw of the output pass's input size, not its output",

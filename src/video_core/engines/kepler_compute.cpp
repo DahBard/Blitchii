@@ -20,7 +20,6 @@
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "shader_recompiler/exception.h"
-#include "shader_recompiler/frontend/ampere/program_override.h"
 #include "core/core.h"
 #include "video_core/gpu_split.h"
 #include "video_core/fire_emblem_upscale.h"
@@ -805,9 +804,6 @@ bool KeplerCompute::DispatchNativeCompute(const NativeQmdScheduler::Descriptor& 
             return true;
         }
     }
-    if (BypassOotBaseNetwork()) {
-        return true;
-    }
     bool dispatched = true;
     try {
         rasterizer->DispatchCompute();
@@ -1209,37 +1205,8 @@ std::optional<Texture::TICEntry> KeplerCompute::ConstBuffer0Image(u32 offset) co
     return GetTICEntry(tic_index);
 }
 
-/// Identify a known 1.0.0 output pass before shader translation can reject it.
-/// The first word is a quick filter. The full native key must match before replacing the pass.
-bool KeplerCompute::BypassOotBaseNetwork() {
-    using namespace VideoCommon::OotNetwork;
-    const u64 program_id = Settings::GetCurrentProgramID();
-    if (!BypassEnabled(program_id)) {
-        return false;
-    }
-    const GPUVAddr program = regs.code_loc.Address() + launch_description.program_start;
-    if (!memory_manager.IsFullyMappedRange(program, sizeof(u32))) {
-        return false;
-    }
-    const u32 first_word = memory_manager.Read<u32>(program);
-    // Several output programs start with the same instruction.
-    for (const auto& candidate : BaseOutputPrograms) {
-        if (candidate.first_word != first_word ||
-            !memory_manager.IsFullyMappedRange(program, candidate.size)) {
-            continue;
-        }
-        std::vector<Shader::Ampere::Instruction> code(candidate.size /
-                                                     sizeof(Shader::Ampere::Instruction));
-        memory_manager.ReadBlock(program, code.data(), candidate.size);
-        if (Shader::Ampere::NativeProgramKey(code) == candidate.key) {
-            return BypassOotNetwork(program_id, candidate.key);
-        }
-    }
-    return false;
-}
-
-/// Replace a known output pass with a copy of the latest tonemapped image, using scaling for the
-/// base game. The update's network passes may be skipped after a successful replacement.
+/// Replace the output pass with a copy of the latest tonemapped image. The network passes may be
+/// skipped after a successful replacement.
 bool KeplerCompute::BypassOotNetwork(u64 program_id, u64 native_key) {
     using namespace VideoCommon::OotNetwork;
     if (!BypassEnabled(program_id)) {
@@ -1282,9 +1249,7 @@ bool KeplerCompute::BypassOotNetwork(u64 program_id, u64 native_key) {
         bypass->after_network.store(0, std::memory_order_relaxed);
         return bypass->output_replaced.load(std::memory_order_relaxed);
     }
-    const bool base_output = std::ranges::find(BaseOutputPrograms, native_key,
-                                              &BaseOutputProgram::key) != BaseOutputPrograms.end();
-    if (native_key != OutputProgramKey && !base_output) {
+    if (native_key != OutputProgramKey) {
         u64 none = 0;
         bypass->after_network.compare_exchange_strong(none, native_key, std::memory_order_relaxed);
         return false;
@@ -1320,11 +1285,8 @@ bool KeplerCompute::BypassOotNetwork(u64 program_id, u64 native_key) {
         bypass->input_height.store(input->Height(), std::memory_order_relaxed);
         bypass->output_address.store(output->Address(), std::memory_order_relaxed);
     }
-    // The base game can run its tonemap at a lower resolution than the output.
     if (!images_valid || tonemapped.Address() == 0 || tonemapped.Address() == output->Address() ||
-        (base_output ? tonemapped.width > output->Width() || tonemapped.height > output->Height()
-                     : tonemapped.width != output->Width() ||
-                           tonemapped.height != output->Height())) {
+        tonemapped.width != output->Width() || tonemapped.height != output->Height()) {
         bypass->output_replaced.store(false, std::memory_order_relaxed);
         static bool warned = false;
         if ((learned || !images_valid) && !std::exchange(warned, true)) {
@@ -1364,7 +1326,7 @@ bool KeplerCompute::BypassOotNetwork(u64 program_id, u64 native_key) {
     const s32 height = static_cast<s32>(output->Height());
     const Fermi2D::Config config{
         .operation = Fermi2D::Operation::SrcCopy,
-        .filter = base_output ? Fermi2D::Filter::Bilinear : Fermi2D::Filter::Point,
+        .filter = Fermi2D::Filter::Point,
         .must_accelerate = true,
         .dst_x0 = 0,
         .dst_y0 = 0,

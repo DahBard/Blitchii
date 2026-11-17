@@ -26,22 +26,14 @@ patch. Sampled frame dumps, constant-buffer traces and pixel statistics showed:
   overshoot up to 1.72 on bright edges. That is the halo users see.
 - Only the HUD and a plain copy for presentation follow the output pass.
 
-In the base game (1.0.0), the same tonemap can run below the output resolution. A frame dump in the
-Temple of Time showed a 1920x1080 tonemapped scene feeding a 2560x1440 output. The base game's
-output shaders use the same constant-buffer handle offsets as the update.
-
 ## What No sharpening does
 
-- On 1.1.1, `ShaderCache::ComputeShader` calls `KeplerCompute::BypassOotNetwork`. The output
-  pass uses a same-size point copy. The prepass and network are skipped while the replacement works.
-  The known intermediate program is also skipped between a skipped prepass and the output copy.
-- On 1.0.0, `KeplerCompute::BypassOotBaseNetwork` recognizes the known output programs from
-  `DispatchNativeCompute` before translation, which can reject their per-tap gathers. The game
-  selects different programs as the internal resolution changes. Match the full native key for
-  each candidate that shares the first word. The replacement uses a bilinear copy that can scale
-  the tonemap up to the output resolution. The base game's other compute passes still run.
-- Both paths use `AccelerateSurfaceCopy` and get the output format, size and block-linear layout
-  from the output pass's texture descriptor at cb0+0xd0.
+`ShaderCache::ComputeShader` calls `KeplerCompute::BypassOotNetwork`. The output pass is replaced
+by a same-size point copy (`AccelerateSurfaceCopy`; output format, size and block-linear layout
+from the output pass's texture descriptor at cb0+0xd0). The prepass and network are skipped while
+the replacement works. The known intermediate program is also skipped between a skipped prepass and
+the output copy. The base game (1.0.0) is not handled here: our build leaves out #1137, which
+checked every native dispatch for its output programs.
 
 The images are learned at run time, not hard-coded. The copy writes the image the output pass
 would write (cb0+0xd0). It reads render target 0 of the latest B10G11R11 draw since the previous
@@ -59,8 +51,7 @@ docs/native-dlss-replacement.md). A frame that ends in one of them would read th
 network's stale result, so a skipped prepass that no replacement followed brings the network back
 from the next frame. The log names the first program after the network the first time that
 happens. The replacement requires two
-B10G11R11 block-linear images, and the tonemapped image must fit the output dimensions (an exact
-match on 1.1.1). If no tonemapped image was drawn or the copy fails, dispatch falls back to the
+B10G11R11 block-linear images of the same size. If no tonemapped image was drawn or the copy fails, dispatch falls back to the
 game's shader. The state lives in the rasterizer (`OotNetwork::BypassState`) because the tonemap
 pass draws on the 3D engine and the network's passes do not all run on the same compute engine.
 
@@ -83,9 +74,9 @@ The game's constants (shader hashes, program keys, the cb0 offset) are in
 
 ## Caveats
 
-- The known shader keys cover base 1.0.0 (main build ID
-  `33FA6C2C23848282A77E8B88A0A93F4887C55920`) and update 1.1.1
-  (`E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348`). A different revision needs its shaders checked.
+- Hashes, keys and the offset are specific to the game's main with build id
+  `E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348` (1.1.1); a game update needs them re-checked. With
+  other keys the bypass does nothing.
 - B10G11R11 has little precision in dark tones: without the network's smoothing some banding
   shows in deep shadows.
 - Vulkan only: other backends offer no bypass state, so the setting has no effect there.
