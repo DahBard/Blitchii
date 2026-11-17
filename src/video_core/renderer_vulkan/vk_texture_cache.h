@@ -113,6 +113,10 @@ public:
 
     bool CanReportMemoryUsage() const;
 
+    /// The largest width and height a scaled image may take: the device's 2D image and
+    /// framebuffer limits (16384 on AMD).
+    u32 GetMaxScaledExtent() const noexcept;
+
     /// Images that did not fit the device memory budget so far (see MemoryAllocator).
     u32 MemoryPressureEvents() const noexcept {
         return memory_allocator.MemoryPressureEvents();
@@ -497,6 +501,11 @@ public:
     Image& operator=(Image&&) = default;
 
     u32 HostMipLevels() const noexcept;
+
+    /// The format a copy out of the host image yields: the guest format, or what a converted one
+    /// (ASTC re-compressed to BC1/BC3 or decoded to RGBA8, BCn decoded without host support) is
+    /// kept as.
+    [[nodiscard]] VideoCore::Surface::PixelFormat HostFormat() const;
 
     /// No memory was left to make it: the texture cache drops it instead of using it.
     [[nodiscard]] bool OutOfMemory() const noexcept {

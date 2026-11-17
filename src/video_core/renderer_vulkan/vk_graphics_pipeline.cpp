@@ -21,7 +21,6 @@
 #include "video_core/renderer_vulkan/pipeline_helper.h"
 
 #include "common/bit_field.h"
-#include "common/scope_exit.h"
 #include "common/zstd_compression.h"
 #include "video_core/renderer_vulkan/maxwell_to_vk.h"
 #include "video_core/renderer_vulkan/pipeline_statistics.h"
@@ -418,6 +417,8 @@ GraphicsPipeline::GraphicsPipeline(
         num_descriptor_entries += NumDescriptorEntries(*info);
     }
     fragment_has_color0_output = stage_infos[NUM_STAGES - 1].stores_frag_color[0];
+    on_far_plane = infos[0] && infos[0]->position_on_far_plane && !infos[1] && !infos[2] &&
+                   !infos[3] && key.state.extended_dynamic_state_2 != 0;
     // The guest leaves render target components the fragment shader doesn't output untouched,
     // while Vulkan writes undefined values to them (AMD writes garbage), so they are masked out.
     for (size_t rt = 0; rt < Maxwell::NumRenderTargets; ++rt) {
@@ -560,8 +561,9 @@ GraphicsPipeline::GraphicsPipeline(
                 .count = emulation_buffers,
                 .is_written = true,
             });
-            descriptor_allocator =
-                descriptor_pool.Allocator(device, scheduler, set_layout, bank_infos);
+            descriptor_allocator = descriptor_pool.Allocator(device, scheduler, set_layout,
+                                                             bank_infos,
+                                                             builder.UsesUpdateAfterBindPool());
             if (mesh_emulation->has_task) {
                 // The distribution pass: payload, offsets, map and arguments, plus its push
                 // constants (Shader::Backend::SPIRV::MeshEmulationDistributionConstants).
@@ -604,40 +606,39 @@ GraphicsPipeline::GraphicsPipeline(
                                                          });
             }
         } else if (!uses_push_descriptor) {
-            descriptor_allocator =
-                descriptor_pool.Allocator(device, scheduler, set_layout, stage_infos);
+            descriptor_allocator = descriptor_pool.Allocator(device, scheduler, set_layout,
+                                                             stage_infos,
+                                                             builder.UsesUpdateAfterBindPool());
         }
     }
 
     // Shader cache v2: the emission is the CPU stage of the build's job.
     std::function<void()> emit;
     if (build_queue.jobs && emit_stages) {
-        emit = [this, shader_notify, emit_stages = std::exchange(emit_stages, {})] {
+        emit = [this, emit_stages = std::exchange(emit_stages, {})] {
             try {
                 spirv = emit_stages();
             } catch (const Shader::Exception& exception) {
                 LOG_ERROR(Render_Vulkan, "Graphics pipeline {:016x}: {}", key.Hash(),
                           exception.what());
-                if (shader_notify) {
-                    shader_notify->MarkShaderComplete();
-                }
-                throw;
-            } catch (...) {
-                if (shader_notify) {
-                    shader_notify->MarkShaderComplete();
-                }
                 throw;
             }
         };
     }
-    auto func{[this, shader_notify, &render_pass_cache, pipeline_statistics,
+    // The build counts as complete once its task is released, run or not: one dropped before it
+    // ran (a failed emission, a queued build cancelled with its pipeline) is balanced too.
+    struct CompleteOnRelease {
+        explicit CompleteOnRelease(VideoCore::ShaderNotify& notify_) : notify{notify_} {}
+        ~CompleteOnRelease() {
+            notify.MarkShaderComplete();
+        }
+        VideoCore::ShaderNotify& notify;
+    };
+    auto func{[this, &render_pass_cache, pipeline_statistics,
+                complete = shader_notify ? std::make_shared<CompleteOnRelease>(*shader_notify)
+                                         : nullptr,
                 emit_stages = std::move(emit_stages)] {
         const auto begin = std::chrono::steady_clock::now();
-        SCOPE_EXIT {
-            if (shader_notify) {
-                shader_notify->MarkShaderComplete();
-            }
-        };
         try {
             if (emit_stages) {
                 spirv = emit_stages();
@@ -646,12 +647,8 @@ GraphicsPipeline::GraphicsPipeline(
                 if (spirv[stage].empty()) {
                     continue;
                 }
-                spv_modules[stage] = BuildShader(device, spirv[stage]);
-                if (device.HasDebuggingToolAttached()) {
-                    const std::string name{
-                        fmt::format("Shader {:016x}", key.unique_hashes[stage + 1])};
-                    spv_modules[stage].SetObjectNameEXT(name.c_str());
-                }
+                spv_modules[stage] =
+                    BuildGuestShader(device, spirv[stage], key.unique_hashes[stage + 1]);
             }
             const VkRenderPass render_pass{render_pass_cache.Get(MakeRenderPassKey(key.state, device))};
             Validate();
@@ -1920,8 +1917,8 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
-        .depthClampEnable =
-        static_cast<VkBool32>(dynamic.depth_clamp_disabled == 0 ? VK_TRUE : VK_FALSE),
+        .depthClampEnable = static_cast<VkBool32>(
+            on_far_plane || dynamic.depth_clamp_disabled == 0 ? VK_TRUE : VK_FALSE),
         .rasterizerDiscardEnable =
         static_cast<VkBool32>(dynamic.rasterize_enable == 0 ? VK_TRUE : VK_FALSE),
         .polygonMode =

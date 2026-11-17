@@ -121,6 +121,7 @@ public:
     VideoCore::RasterizerDownloadArea GetFlushArea(DAddr addr, u64 size) override;
     bool HasPendingQueries(DAddr addr, u64 size) override;
     bool HoldsQueries(DAddr addr, u64 size) override;
+    bool MayHoldImagesOrReports(DAddr addr, u64 size) override;
     void InvalidateRegion(DAddr addr, u64 size,
                           VideoCommon::CacheType which = VideoCommon::CacheType::All) override;
     void PrepareRegionWrite(DAddr addr, u64 size, VideoCommon::CacheType which) override;
@@ -201,8 +202,8 @@ private:
     void CaptureIndirectTrace();
     void CollectIndirectTrace();
     void TraceDrawFailure(std::string_view reason);
-    /// Remembers render target 0 of a draw with one of Ocarina of Time's tonemap shaders.
-    void TrackOotTonemappedImage(const GraphicsPipeline& pipeline);
+    /// Remembers render target 0 of a draw that can hold Ocarina of Time's tonemapped image.
+    void TrackOotTonemappedImage();
     bool TryNx2IndirectReset(bool is_indexed, u32 instance_count);
 
     void FlushWork();
@@ -277,7 +278,7 @@ private:
     /// FSR with the frame.
     void UpdateOcarinaJitter();
     void TrackOcarinaActor(u64 shader_hash, bool is_indexed, bool is_indirect);
-    bool TryOcarinaUpscale(const ComputePipeline& pipeline, bool replace);
+    bool TryOcarinaUpscale(const ComputePipeline& pipeline, u64 native_key, bool replace);
     void ReadOcarinaActor(struct OcarinaActorMesh& mesh);
     /// Records the uniform and storage buffers of the current draw or dispatch for the frame dump.
     bool FrameDumpBuffers(bool compute, std::span<const u64> shader_hashes);
@@ -533,6 +534,10 @@ private:
     /// EDEN_NX2_FAST_DRAW_VERIFY: this draw passed DeltaStillHolds, so UpdateVertexInput compares
     /// the vertex input recorded last with what the registers give now.
     bool verify_vertex_input{};
+    /// The draw's pipeline puts every vertex on the far plane and the game set no polygon offset
+    /// for it: it gets a depth bias towards the far value and depth clamping (see
+    /// UpdateDynamicStates).
+    bool far_plane_draw{};
     VertexInputState recorded_vertex_input;
     bool vertex_input_recorded{};
 

@@ -4,20 +4,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <algorithm>
-#include <limits>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cstdlib>
+#include <limits>
+#include <memory>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <span>
+#include <string_view>
 #include <tuple>
-#include <memory>
 #include <utility>
 #include <vector>
 #include <boost/container/small_vector.hpp>
-#include <bit>
-#include <numeric>
 #include "common/alignment.h"
 #include "common/bit_util.h"
 #include "common/div_ceil.h"
@@ -389,6 +390,9 @@ constexpr std::array<VkFormat, 2> OpaqueAstcViewFormats{VK_FORMAT_BC1_RGBA_UNORM
     }
     return HugeAstcHostFormat(device, info);
 }
+
+// Finished decode images wait for the next texture of their shape, up to this much memory.
+constexpr u64 MaxFreeTranscodeBytes = u64{256} << 20;
 
 // ASTC that the GPU decodes and re-compresses to BC1/BC3 itself (TranscodeAstcToBcn): no CPU
 // decode, so streamed textures are ready the frame they are first used instead of seconds later.
@@ -2896,6 +2900,11 @@ u64 TextureCacheRuntime::GetDeviceMemorySlack() const {
     return device.GetDeviceMemorySlack();
 }
 
+u32 TextureCacheRuntime::GetMaxScaledExtent() const noexcept {
+    return (std::min)({device.GetMaxImageDimension2D(), device.GetMaxFramebufferWidth(),
+                       device.GetMaxFramebufferHeight()});
+}
+
 bool TextureCacheRuntime::CanDownloadMsaa(const VideoCommon::ImageInfo& info) const {
     const VkImageAspectFlags aspect_mask = ImageAspectMask(info.format);
     if ((aspect_mask & VK_IMAGE_ASPECT_COLOR_BIT) != 0) {
@@ -2986,8 +2995,6 @@ void TextureCacheRuntime::TickFrame() {
         pending_byte_addressed_shadows.pop_front();
     }
     static constexpr u32 MAX_UNUSED_SCRATCH_FRAMES = 60;
-    // Finished decode images wait for the next texture of their shape, up to this much memory.
-    static constexpr u64 MaxFreeTranscodeBytes = u64{256} << 20;
     const auto decode_bytes = [](const PendingTranscode& t) {
         u64 bytes{};
         for (u32 level = 0; level < t.levels; ++level) {
@@ -3103,7 +3110,7 @@ Image::Image(TextureCacheRuntime& runtime_, const ImageInfo& info_, GPUVAddr gpu
         flags |= VideoCommon::ImageFlagBits::Converted;
         flags |= VideoCommon::ImageFlagBits::CostlyLoad;
     }
-    if (runtime->device.HasDebuggingToolAttached()) {
+    if (runtime->device.NamesObjects()) {
         original_image.SetObjectNameEXT(VideoCommon::Name(*this).c_str());
     }
     current_image = &Image::original_image;
@@ -3554,6 +3561,39 @@ void Image::DownloadMemory(const StagingBufferRef& map, std::span<const BufferIm
 
 u32 Image::HostMipLevels() const noexcept {
     return HostMipCount(info) - host_level_offset;
+}
+
+PixelFormat Image::HostFormat() const {
+    if (False(flags & ImageFlagBits::Converted)) {
+        return info.format;
+    }
+    const bool srgb = IsPixelFormatSRGB(info.format);
+    switch (AstcHostFormat(runtime->device, info)
+                .value_or(MaxwellToVK::SurfaceFormat(runtime->device, FormatType::Optimal, false,
+                                                     info.format)
+                              .format)) {
+    case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+    case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+        return srgb ? PixelFormat::BC1_RGBA_SRGB : PixelFormat::BC1_RGBA_UNORM;
+    case VK_FORMAT_BC3_UNORM_BLOCK:
+    case VK_FORMAT_BC3_SRGB_BLOCK:
+        return srgb ? PixelFormat::BC3_SRGB : PixelFormat::BC3_UNORM;
+    case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
+    case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+        return srgb ? PixelFormat::A8B8G8R8_SRGB : PixelFormat::A8B8G8R8_UNORM;
+    case VK_FORMAT_R8_UNORM:
+        return PixelFormat::R8_UNORM;
+    case VK_FORMAT_R8_SNORM:
+        return PixelFormat::R8_SNORM;
+    case VK_FORMAT_R8G8_UNORM:
+        return PixelFormat::R8G8_UNORM;
+    case VK_FORMAT_R8G8_SNORM:
+        return PixelFormat::R8G8_SNORM;
+    case VK_FORMAT_R16G16B16A16_SFLOAT:
+        return PixelFormat::R16G16B16A16_FLOAT;
+    default:
+        return PixelFormat::Invalid;
+    }
 }
 
 VkImageView Image::StorageImageView(s32 level) noexcept {
@@ -5231,6 +5271,19 @@ void TextureCacheRuntime::TranscodeAstcToBcn(
     // of the texture, forever (#1035). When the whole array does not fit, decode and encode it a
     // few layers at a time through a smaller image; the encoded output is the same.
     u32 batch = layers;
+    if (device.IsIntegrated()) {
+        // Device memory is host RAM here, and an over-budget decode image is still allocated
+        // (#1756: two ~890 MiB images on a 15 GiB Meteor Lake laptop just before it froze). Start
+        // with as many layers as the free pool keeps.
+        u64 layer_bytes{};
+        for (u32 level = 0; level < levels; ++level) {
+            layer_bytes +=
+                u64{(std::max)(width >> level, 1U)} * (std::max)(height >> level, 1U) * 4;
+        }
+        while (batch > 1 && layer_bytes * batch > MaxFreeTranscodeBytes) {
+            batch = Common::DivCeil(batch, 2U);
+        }
+    }
     PendingTranscode pending;
     bool reused = take_free(batch, pending);
     if (!reused) {
@@ -5323,7 +5376,11 @@ void TextureCacheRuntime::TranscodeAstcToBcn(
         });
         total += size;
     }
-    const auto output = staging_buffer_pool.Request(total, MemoryUsage::DeviceLocal);
+    // Deferred, and stamped once the copy below is recorded. The decode submits (wait), so a
+    // buffer stamped now carried the tick before that submit while the encode and the copy ran
+    // in the next one: the pool could hand it to the next transcode, or free it, once the GPU
+    // was past the decode, and two textures' blocks met in one buffer.
+    auto output = staging_buffer_pool.Request(total, MemoryUsage::DeviceLocal, true);
 
     const u64 layer_stride = info.layer_stride;
     const size_t guest_size = image.guest_size_bytes;
@@ -5347,10 +5404,13 @@ void TextureCacheRuntime::TranscodeAstcToBcn(
             ASTCDecoderPass::Target{
                 .image = *pending.image,
                 .aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT,
-                // A later batch overwrites what the previous batch's encode read: wait for it.
+                // A later batch overwrites what the previous batch's encode read: its barrier
+                // waits for that (initialized).
                 .initialized = base != 0,
                 .level_view = [&pending](s32 level) { return *pending.views[level]; },
-                .wait = true,
+                // Only the last batch submits. `map` carries this tick: a later batch reading it
+                // after a submit could find it freed, or refilled with the next upload.
+                .wait = base + count >= layers,
                 .levels = levels,
             },
             batch_map, swizzles);
@@ -5372,6 +5432,7 @@ void TextureCacheRuntime::TranscodeAstcToBcn(
                                0, barrier);
     });
     image.UploadMemory(output.buffer, output.offset, copies);
+    staging_buffer_pool.FreeDeferred(output);
     pending.tick = scheduler.CurrentTick();
     pending_transcodes.push_back(std::move(pending));
 }

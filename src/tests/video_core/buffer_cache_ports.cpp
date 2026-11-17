@@ -2559,3 +2559,14 @@ TEST_CASE("Claimed CPU writes keep their bytes when an earlier one downloads the
     REQUIRE(f.bytes[0x1080f] == 0xbb);
     REQUIRE(f.bytes[0x10810] == 0x12);
 }
+
+TEST_CASE("A DMA clear finds buffers past the first quarter of its range", "[buffer_ports]") {
+    KeepFixture f{nullptr};
+    f.Draw(nullptr); // Binds the channel DMAClear uses.
+    f.memory->Map(0x200000, 0x20000, 0x10000, Tegra::PTEKind::PITCH, true);
+    (void)Access::Add(*f.cache, 0x20800, 0x100);
+
+    // DMAClear counts words: 0x200 of them end where the buffer starts, 0x201 reach into it.
+    REQUIRE_FALSE(f.cache->DMAClear(0x200000, 0x200, 0x09090909));
+    REQUIRE(f.cache->DMAClear(0x200000, 0x201, 0x09090909));
+}

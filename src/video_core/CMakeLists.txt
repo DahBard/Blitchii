@@ -39,6 +39,7 @@ add_library(video_core STATIC
     dirty_flags.h
     dma_pusher.cpp
     dma_pusher.h
+    due_composites.h
     engines/sw_blitter/blitter.cpp
     engines/sw_blitter/blitter.h
     engines/sw_blitter/converter.cpp
@@ -220,6 +221,7 @@ add_library(video_core STATIC
     renderer_vulkan/vk_fsr3_upscaler.h
     renderer_vulkan/vk_fsr4_upscaler.cpp
     renderer_vulkan/vk_fsr4_upscaler.h
+    vulkan_common/descriptor_limits.h
     vulkan_common/ffx_files.h
     vulkan_common/ffx_runtime.cpp
     vulkan_common/ffx_runtime.h
@@ -265,6 +267,7 @@ add_library(video_core STATIC
     renderer_vulkan/vk_render_pass_cache.h
     renderer_vulkan/vk_resource_pool.cpp
     renderer_vulkan/vk_resource_pool.h
+    renderer_vulkan/frame_pacer.h
     renderer_vulkan/vk_scheduler.cpp
     renderer_vulkan/vk_scheduler.h
     renderer_vulkan/fragment_barrier_state.h
@@ -284,6 +287,8 @@ add_library(video_core STATIC
     renderer_vulkan/vk_update_descriptor.cpp
     renderer_vulkan/vk_update_descriptor.h
     renderer_vulkan/descriptor_payload_growth.h
+    vulkan_common/vulkan_address_map.cpp
+    vulkan_common/vulkan_address_map.h
     vulkan_common/vulkan_debug_callback.cpp
     vulkan_common/vulkan_debug_callback.h
     vulkan_common/vulkan_device.cpp
