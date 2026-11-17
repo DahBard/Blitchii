@@ -29,8 +29,6 @@ void Scheduler::BindChannel(GPU& gpu, s32 bind_id) {
             0, VideoCommon::GpuSplit::Writes::Noted);
         return;
     }
-    // ResumePending can bind a channel without popping a new GPUThread command.
-    VideoCommon::Nx2FastDraw::BreakUnsplit(VideoCommon::Nx2FastDraw::Reason::Call);
     std::scoped_lock lk{scheduling_guard};
     gpu.BindChannel(bind_id);
 }
