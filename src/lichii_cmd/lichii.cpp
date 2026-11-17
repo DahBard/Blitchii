@@ -488,7 +488,6 @@ static bool BuildWarm(Core::System& system, int argc, char** argv) {
 
 /// GPU trace replay (docs/nx2/gpu-trace.md):
 ///   eden-cli --replay <trace> --out <dir> [--frames N] [--device N]
-///                     [--record <trace> --record-from <present> --record-presents N]
 ///   eden-cli --gpu-trace-sample <trace>: writes the synthetic trace.
 static bool ReplayGpuTrace(Core::System& system, int argc, char** argv) {
     namespace GpuTrace = VideoCommon::GpuTrace;
@@ -507,12 +506,6 @@ static bool ReplayGpuTrace(Core::System& system, int argc, char** argv) {
             options.out = Common::FS::ToU8String(argv[++i]);
         } else if (argument == "--frames" && has_value) {
             options.max_frames = static_cast<u32>(std::strtoul(argv[++i], nullptr, 10));
-        } else if (argument == "--record" && has_value) {
-            options.record = Common::FS::ToU8String(argv[++i]);
-        } else if (argument == "--record-from" && has_value) {
-            options.record_from = static_cast<u32>(std::strtoul(argv[++i], nullptr, 10));
-        } else if (argument == "--record-presents" && has_value) {
-            options.record_presents = static_cast<u32>(std::strtoul(argv[++i], nullptr, 10));
         } else if (argument == "--device" && has_value) {
             Settings::values.vulkan_device.SetValue(std::atoi(argv[++i]));
         } else if (options.trace.empty()) {

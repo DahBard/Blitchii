@@ -21,7 +21,6 @@
 #include "video_core/dma_pusher.h"
 #include "video_core/front_qmd.h"
 #include "video_core/gpu.h"
-#include "video_core/gpu_trace/recorder.h"
 #include "video_core/gpu_thread.h"
 #include "video_core/gpu_split.h"
 #include "video_core/nx2.h"
@@ -184,13 +183,6 @@ void ThreadManager::StartThread(VideoCore::RendererBase& renderer, Core::Fronten
             }
             if (stop_token.stop_requested()) {
                 break;
-            }
-            if (VideoCommon::GpuTrace::g_requested.load(std::memory_order_relaxed) ||
-                VideoCommon::GpuTrace::g_file_trigger) {
-                const auto* const submit = std::get_if<SubmitListCommand>(&next.data);
-                VideoCommon::GpuTrace::OnCommand(
-                    system, scheduler.HasPendingChannels(), submit ? &submit->entries : nullptr,
-                    submit ? submit->channel : -1, std::holds_alternative<GPUTickCommand>(next.data));
             }
             if (split.Active()) {
                 VideoCommon::FrontQmdView::Get().MaybeTakeOver(split);
