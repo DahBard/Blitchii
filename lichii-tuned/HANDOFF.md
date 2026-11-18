@@ -3274,6 +3274,11 @@ Own changes:
    - r69 = tuned4 426c65a64e (r22-nvn-direct with merge 6b merged in 3c1d6cfa96, and the test
      helper fix), base under the patch r22-up-7 (0ba2e31256); 512 files. buffer_cache_ports run
      natively: 71 of 71 cases pass (70 of 71 without the helper fix).
+     - CI (tuned bdaadd90da): build run #9 passed in 31 min (NVN direct built by MinGW clang with
+       the vendored C library, ThinLTO and PGO); unit tests run #10: 1,730 cases, 1,720 passed and
+       10 skipped (74,446,848 assertions), the clock trace passed, and the stack overflow check
+       reported all four modes (eden_crash.dmp ~16.8 MB each). Waiting for the owner's sitting:
+       the fountain run against r68, then nvn-direct.bat and nvn-direct-null.bat.
 1. Plan to 60 fps with 1% lows above 30 at 1440p -> 4K FSR 4 (agreed with the owner after r22).
    r27: the frame is ~33 ms; the guest cores 4 and 5 (26.2, 24.8 ms) now bound it, then the back
    (22.7): each must fall under ~15 ms; the GPU has room (~12 ms of 16.7 with FSR 4). The host
